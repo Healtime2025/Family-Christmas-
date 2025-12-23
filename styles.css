@@ -11,6 +11,11 @@
   --radius: 18px;
   --pad: 16px;
   --max: 980px;
+
+  /* ✅ cinematic transitions */
+  --ui-hide-y: -10px;
+  --ui-fade: .42s;
+
   font-synthesis: none;
   text-rendering: geometricPrecision;
 }
@@ -33,6 +38,9 @@ body{
   display:block;
 }
 
+/* -----------------------------
+   UI wrapper
+----------------------------- */
 .ui{
   position:relative;
   z-index:2;
@@ -43,8 +51,25 @@ body{
   gap: 14px;
   max-width: var(--max);
   margin: 0 auto;
+
+  /* ✅ smooth hide/show */
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--ui-fade) ease,
+    transform var(--ui-fade) ease;
 }
 
+/* ✅ Cinematic mode: hide UI but keep it in DOM (for smooth return) */
+body.cinematic .ui{
+  opacity: 0;
+  transform: translateY(var(--ui-hide-y));
+  pointer-events: none;
+}
+
+/* -----------------------------
+   Header
+----------------------------- */
 .top{
   display:flex;
   align-items:flex-start;
@@ -99,6 +124,9 @@ body{
   line-height: 1.35;
 }
 
+/* -----------------------------
+   Card / Controls
+----------------------------- */
 .card{
   background: var(--card);
   border: 1px solid var(--stroke);
@@ -146,7 +174,9 @@ body{
   font-size: 12px;
   color: var(--muted);
 }
-.field select, .field input[type="range"]{
+
+.field select,
+.field input[type="range"]{
   width:100%;
   border-radius: 14px;
   border: 1px solid var(--stroke);
@@ -155,10 +185,17 @@ body{
   padding: 10px 12px;
   outline:none;
 }
+
+/* ✅ ranges look better and stay clickable */
 .field input[type="range"]{
   padding: 12px;
+  accent-color: var(--accent2);
+  cursor: pointer;
 }
 
+/* -----------------------------
+   Edit panel
+----------------------------- */
 .edit{
   margin-top: 10px;
 }
@@ -184,6 +221,9 @@ body{
   color: rgba(255,255,255,.84);
 }
 
+/* -----------------------------
+   Footer
+----------------------------- */
 .foot{
   margin-top:auto;
   opacity:.9;
@@ -201,7 +241,5 @@ body{
   .name{ font-size: 22px; }
 }
 
-/* ✅ Cinematic mode: hide UI, keep only the tree */
-body.cinematic .ui{
-  display:none !important;
-}
+/* ✅ (optional) smoother tap feel on mobile */
+button, select, input { -webkit-tap-highlight-color: transparent; }
