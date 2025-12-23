@@ -1,16 +1,19 @@
-/* Mirror OS • Family Christmas Tree (v2) — Gentler scrolling & colors
+/* Mirror OS • Family Christmas Tree (v2.3) — All requested mods (NO Step-2 helper function)
    - Animated tree (2 styles)
    - Rotating family names + affirmations
    - Pause/Play, Next, Shuffle, Speed, Brightness
-   - ✅ Words scroll ON the tree (canvas) — slower + multi-color
+   - ✅ Words scroll ON the tree (canvas) — gentle + multi-color
+   - ✅ YOU control: text speed, colors, font, size
+   - ✅ Text can be placed into different SHAPES (tree/circle/heart/wave/pillar/star)
+   - ✅ Text can render inside ORNAMENTS (Christmas balls / pills / badges) for clarity
    - ✅ Cinematic mode (hide UI) + shortcut: C
    - Optional voice (Web Speech API)
    - Offline (service worker)
-
-   Customize:
-   - Edit FAMILY array below (names + traits)
 */
 
+/* ---------------------------
+   Family
+--------------------------- */
 const FAMILY = [
   { name: "Dad", traits: ["visionary", "strong", "full of love", "protector", "builder of dreams"] },
   { name: "Mom", traits: ["gentle", "wise", "full of grace", "caring", "holds the home together"] },
@@ -42,8 +45,61 @@ const PHRASE_TEMPLATES = [
     `${name}: ${picks[0]}. ${picks[1] ? picks[1] + "." : ""} ${picks[2] ? picks[2] + "." : ""}`.trim(),
 ];
 
+/* ---------------------------
+   UI timing (name switching)
+--------------------------- */
 const SPEEDS = { slow: 5200, normal: 3600, fast: 2400 };
 
+/* ==========================================================
+   ✅ TEXT CONTROLS — YOU OWN THESE
+   (Change values here any time)
+========================================================== */
+
+// 1) Text scroll speed (smaller = slower)
+let TEXT_SPEED = 0.000045; // try: 0.000035 (very gentle) → 0.00008 (festive)
+
+// 2) Font & size
+let TEXT_FONT_FAMILY = `"Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
+let TEXT_FONT_SIZE = 18; // px (try 16–26)
+let TEXT_FONT_WEIGHT = 800; // 600–900
+
+// 3) Color system
+let TEXT_COLOR_MODE = "palette"; // "single" | "palette" | "random"
+let TEXT_SINGLE_COLOR = "hsl(45, 90%, 72%)"; // warm gold
+let TEXT_COLOR_PALETTE = [
+  "hsl(45, 90%, 72%)",   // gold
+  "hsl(200, 92%, 72%)",  // sky blue
+  "hsl(330, 86%, 72%)",  // rose
+  "hsl(120, 65%, 70%)",  // green
+  "hsl(18, 92%, 72%)",   // orange
+];
+
+// 4) Glow
+let TEXT_GLOW_BLUR = 16; // 10–24 looks best
+
+/* ==========================================================
+   ✅ SHAPE CONTROL (text placement)
+========================================================== */
+let TEXT_SHAPE = "tree";
+// "tree" | "circle" | "heart" | "wave" | "pillar" | "star"
+let TEXT_SHAPE_RADIUS = 0.28; // used by circle/heart/star (relative to screen width)
+
+/* ==========================================================
+   ✅ ORNAMENT CONTROL (text in balls/bullets)
+========================================================== */
+let TEXT_CONTAINER = "ball";
+// "none" | "ball" | "pill" | "badge"
+
+let ORNAMENT_PADDING_X = 12;
+let ORNAMENT_PADDING_Y = 8;
+
+let ORNAMENT_BG_COLOR = "rgba(10,10,14,0.48)";
+let ORNAMENT_BORDER_COLOR = "rgba(255,255,255,0.35)";
+let ORNAMENT_GLOW = 12;
+
+/* ---------------------------
+   DOM / Canvas
+--------------------------- */
 const el = (id) => document.getElementById(id);
 const canvas = el("tree");
 const ctx = canvas.getContext("2d");
@@ -68,6 +124,7 @@ function resize() {
   DPR = Math.min(2, window.devicePixelRatio || 1);
   W = Math.floor(window.innerWidth);
   H = Math.floor(window.innerHeight);
+
   canvas.width = Math.floor(W * DPR);
   canvas.height = Math.floor(H * DPR);
   canvas.style.width = W + "px";
@@ -93,9 +150,34 @@ let speakToken = 0;
 /* ✅ Cinematic mode */
 let cinematic = false;
 
-/* ✅ Scrolling words on the tree */
+/* ✅ Scrolling words */
 let treeText = [];
 
+/* ---------------------------
+   Small helpers
+--------------------------- */
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+/* roundRect fallback */
+function roundRectPath(x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
+  if (ctx.roundRect) {
+    ctx.roundRect(x, y, w, h, rr);
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+/* ---------------------------
+   Order / Phrases
+--------------------------- */
 function makeOrder() {
   order = FAMILY.map((_, i) => i);
   if (shuffleOn) shuffle(order);
@@ -113,8 +195,10 @@ function pickAffirmation(member) {
   const base = [...member.traits];
   const addN = Math.random() < 0.65 ? 1 : 2;
   for (let i = 0; i < addN; i++) base.push(EXTRA_TRAITS[(Math.random() * EXTRA_TRAITS.length) | 0]);
+
   const uniq = [...new Set(base)];
   shuffle(uniq);
+
   const count = 3 + ((Math.random() * 2) | 0);
   const picks = uniq.slice(0, Math.min(count, uniq.length));
   const tmpl = PHRASE_TEMPLATES[(Math.random() * PHRASE_TEMPLATES.length) | 0];
@@ -124,15 +208,25 @@ function pickAffirmation(member) {
 function setNow(member, line) {
   ui.currentName.textContent = member.name;
   ui.currentLine.textContent = line;
+
   if (ui.configPreview) {
     ui.configPreview.textContent = JSON.stringify(
-      { treeMode, shuffleOn, voiceOn, cinematic, speed: speedKey, brightness, family: FAMILY },
+      {
+        treeMode, shuffleOn, voiceOn, cinematic,
+        speed: speedKey, brightness,
+        TEXT_SPEED, TEXT_FONT_FAMILY, TEXT_FONT_SIZE,
+        TEXT_COLOR_MODE, TEXT_SHAPE, TEXT_CONTAINER,
+        family: FAMILY
+      },
       null,
       2
     );
   }
 }
 
+/* ---------------------------
+   Voice
+--------------------------- */
 function speak(text) {
   if (!voiceOn) return;
   if (!("speechSynthesis" in window)) return;
@@ -149,38 +243,110 @@ function speak(text) {
 }
 
 /* ==========================================================
-   ✅ UPDATED: Gentler scrolling + different colors (your snippet)
+   ✅ TEXT: color + spawn (YOU control)
 ========================================================== */
+function pickTextColor() {
+  if (TEXT_COLOR_MODE === "single") return TEXT_SINGLE_COLOR;
+  if (TEXT_COLOR_MODE === "palette") {
+    return TEXT_COLOR_PALETTE[(Math.random() * TEXT_COLOR_PALETTE.length) | 0];
+  }
+  return `hsl(${Math.random() * 360}, 85%, 70%)`;
+}
 
-// Slow down the text speed a bit and add color variation
 function spawnTreeText(text) {
   const words = String(text).split(/\s+/).filter(Boolean);
-  const startU = 0.85; // start lower on the tree
-  const spacing = 0.04; // slightly more spacing
+
+  const startU = 0.86;    // where it begins (lower = closer to base)
+  const spacing = 0.045;  // space between words
 
   words.forEach((word, i) => {
     treeText.push({
       word,
       u: startU + i * spacing,
-      life: 1,
-      alpha: 0,
-      speed: 0.0001 + Math.random() * 0.00005, // slower speed
-      color: `hsl(${Math.random() * 360}, 90%, 70%)`, // random pastel color
+      life: 1.0,
+      alpha: 0.0,
+      speed: TEXT_SPEED + Math.random() * (TEXT_SPEED * 0.30),
+      wobble: Math.random() * Math.PI * 2,
+      color: pickTextColor(),
     });
   });
 
-  // cap
   if (treeText.length > 260) treeText.splice(0, treeText.length - 260);
 }
 
-function renderTreeText(now, dt, cfg) {
+/* ==========================================================
+   ✅ TEXT SHAPES: where each word goes
+========================================================== */
+function getTextPosition(u, cfg, now) {
   const { cx, topY, h, maxRadius, turns } = cfg;
 
+  switch (TEXT_SHAPE) {
+    case "tree": {
+      const y = topY + u * h;
+      const r = (u ** 1.12) * maxRadius;
+      const a = u * turns * Math.PI + Math.sin(now / 1200) * 0.12;
+      return { x: cx + Math.cos(a) * r, y };
+    }
+
+    case "circle": {
+      const radius = W * TEXT_SHAPE_RADIUS;
+      const a = u * Math.PI * 2;
+      return { x: cx + Math.cos(a) * radius, y: H * 0.45 + Math.sin(a) * radius };
+    }
+
+    case "heart": {
+      const t = u * Math.PI * 2;
+      const r = W * TEXT_SHAPE_RADIUS;
+      return {
+        x: cx + r * 0.85 * Math.pow(Math.sin(t), 3),
+        y:
+          H * 0.42 -
+          r *
+            (0.28 * Math.cos(t) -
+             0.12 * Math.cos(2 * t) -
+             0.03 * Math.cos(3 * t))
+      };
+    }
+
+    case "wave": {
+      return {
+        x: W * 0.15 + u * W * 0.7,
+        y: H * 0.55 + Math.sin(u * Math.PI * 4 + now / 900) * 24
+      };
+    }
+
+    case "pillar": {
+      return { x: cx, y: topY + u * h };
+    }
+
+    case "star": {
+      const spikes = 5;
+      const outer = W * TEXT_SHAPE_RADIUS;
+      const inner = outer * 0.45;
+      const a = u * Math.PI * 2;
+      const k = Math.floor(u * spikes * 2);
+      const r = (k % 2 === 0) ? outer : inner;
+      return { x: cx + Math.cos(a) * r, y: H * 0.45 + Math.sin(a) * r };
+    }
+
+    default:
+      return { x: cx, y: topY + u * h };
+  }
+}
+
+/* ==========================================================
+   ✅ TEXT RENDER: gentle + ornaments (NO separate Step-2 function)
+========================================================== */
+function hslToHsla(hsl, a) {
+  // "hsl(H, S%, L%)" -> "hsla(H, S%, L%, a)"
+  return String(hsl).replace(/^hsl\(/, "hsla(").replace(/\)\s*$/, `, ${a})`);
+}
+
+function renderTreeText(now, dt, cfg) {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
 
-  const fontPx = Math.max(14, Math.min(20, W * 0.018));
-  ctx.font = `700 ${fontPx}px system-ui, Inter`;
+  ctx.font = `${TEXT_FONT_WEIGHT} ${TEXT_FONT_SIZE}px ${TEXT_FONT_FAMILY}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
@@ -188,34 +354,74 @@ function renderTreeText(now, dt, cfg) {
 
   for (const t of treeText) {
     t.u -= t.speed * dt;
-    t.life -= 0.0002 * dt; // slower fade
-    t.alpha = Math.min(1, t.alpha + 0.01);
+    t.life -= 0.00018 * dt;            // slower fade (gentler)
+    t.alpha = Math.min(1, t.alpha + 0.010);
 
-    const y = topY + t.u * h;
-    const radius = (t.u ** 1.12) * maxRadius;
-    const angle = t.u * turns * Math.PI + Math.sin(now / 1200) * 0.1;
-    const x = cx + Math.cos(angle) * radius;
+    const pos = getTextPosition(t.u, cfg, now);
+    const x = pos.x;
+    const y = pos.y;
 
-    // apply alpha to HSL color (simple + stable)
-    ctx.fillStyle = `hsla(${(Math.random()*0 + 0) /*placeholder*/}, 0%, 0%, 1)`;
-    // replace above with correct alpha application:
-    const a = Math.max(0, Math.min(1, t.alpha * t.life * brightness));
-    // parse hsl(...) -> hsla(...)
-    // t.color is "hsl(H, S%, L%)"
-    const hsla = t.color.replace(/^hsl\(/, "hsla(").replace(/\)$/, `, ${a})`);
-    ctx.fillStyle = hsla;
+    const a = clamp(t.alpha * t.life * brightness, 0, 1);
 
-    ctx.shadowColor = "rgba(247,198,107,0.8)";
-    ctx.shadowBlur = 18;
+    // perspective feel (tree looks natural); also works on other shapes
+    const scale = clamp(1.10 - t.u * 0.55, 0.62, 1.12);
 
-    // slight perspective: smaller near top
-    const scale = clamp(1.10 - t.u * 0.55, 0.62, 1.1);
+    // measure text for container
+    const metrics = ctx.measureText(t.word);
+    const textW = metrics.width;
+    const textH = TEXT_FONT_SIZE * 1.18;
+
+    const boxW = (textW + ORNAMENT_PADDING_X * 2);
+    const boxH = (textH + ORNAMENT_PADDING_Y * 2);
+
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(scale, scale);
+
+    /* --- ORNAMENT (ball/pill/badge) for clarity --- */
+    if (TEXT_CONTAINER !== "none") {
+      ctx.save();
+      ctx.globalAlpha = a;
+
+      ctx.shadowBlur = ORNAMENT_GLOW;
+      ctx.shadowColor = ORNAMENT_BORDER_COLOR;
+
+      ctx.fillStyle = ORNAMENT_BG_COLOR;
+      ctx.strokeStyle = ORNAMENT_BORDER_COLOR;
+      ctx.lineWidth = 1.5;
+
+      if (TEXT_CONTAINER === "ball") {
+        const r = Math.max(boxW, boxH) * 0.60;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      } else if (TEXT_CONTAINER === "pill") {
+        ctx.beginPath();
+        roundRectPath(-boxW / 2, -boxH / 2, boxW, boxH, boxH / 2);
+        ctx.fill();
+        ctx.stroke();
+      } else if (TEXT_CONTAINER === "badge") {
+        ctx.beginPath();
+        roundRectPath(-boxW / 2, -boxH / 2, boxW, boxH, 10);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    /* --- TEXT --- */
+    const fill = hslToHsla(t.color, a);
+    ctx.fillStyle = fill;
+    ctx.shadowColor = fill;
+    ctx.shadowBlur = TEXT_GLOW_BLUR;
+
     ctx.fillText(t.word, 0, 0);
+
     ctx.restore();
   }
+
   ctx.restore();
 }
 
@@ -232,21 +438,15 @@ function nextMember() {
   spawnTreeText(line);
 
   // Voice (optional)
-  speak(
-    `${member.name}. ${line.replace(member.name, "").replace("…", "").replace("—", "").trim()}`
-  );
+  speak(`${member.name}. ${line.replace(member.name, "").replace("…", "").replace("—", "").trim()}`);
 
   idx++;
   if (idx % order.length === 0) makeOrder();
 }
 
 /* ---------------------------
-   Render helpers
+   Tree visuals
 --------------------------- */
-function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-function lerp(a, b, t) { return a + (b - a) * t; }
-
-const GOLD = { r: 247, g: 198, b: 107 };
 const CYAN = { r: 120, g: 215, b: 255 };
 function rgba(c, a) { return `rgba(${c.r},${c.g},${c.b},${a})`; }
 
@@ -289,7 +489,11 @@ function initLights() {
       const a = (i / count) * 2 * Math.PI + (b % 2 ? 0.15 : 0);
       const x = cx + Math.cos(a) * radius;
       const wobble = (Math.random() - 0.5) * 6;
-      lights.push({ x, y: y + wobble, a, radius, u, hue: (i * 18 + b * 14) % 360, tw: Math.random() * 2 * Math.PI });
+      lights.push({
+        x, y: y + wobble, a, radius, u,
+        hue: (i * 18 + b * 14) % 360,
+        tw: Math.random() * 2 * Math.PI
+      });
     }
   }
 }
@@ -336,6 +540,7 @@ function drawStar(cx, cy, r) {
 function renderGold(now, dt) {
   const cx = W * 0.5, baseY = H * 0.80, topY = H * 0.18;
 
+  // glow base
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const gg = ctx.createRadialGradient(cx, baseY, 10, cx, baseY, W * 0.45);
@@ -347,6 +552,7 @@ function renderGold(now, dt) {
   ctx.fill();
   ctx.restore();
 
+  // particles
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   for (const p of particles) {
@@ -355,6 +561,7 @@ function renderGold(now, dt) {
     const drift = Math.sin(now / 1200 + p.ang) * (1.2 + p.u * 2.2) + p.drift * 30;
     const x = p.baseX + drift;
     const y = p.baseY + Math.cos(now / 1800 + p.u * 6) * 0.7;
+
     const a = (0.05 + twk * 0.25) * brightness;
     ctx.fillStyle = `rgba(247,198,107,${a})`;
     ctx.beginPath();
@@ -363,6 +570,7 @@ function renderGold(now, dt) {
   }
   ctx.restore();
 
+  // subtle silhouette
   ctx.save();
   ctx.globalAlpha = 0.18;
   ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -374,7 +582,7 @@ function renderGold(now, dt) {
   ctx.fill();
   ctx.restore();
 
-  // ✅ words on tree
+  // ✅ words (shape-aware)
   renderTreeText(now, dt, { cx, topY: H * 0.18, h: H * 0.62, maxRadius: W * 0.22, turns: 8.0 });
 
   drawStar(cx, topY - 30, Math.min(W, H) * 0.035);
@@ -383,6 +591,7 @@ function renderGold(now, dt) {
 function renderLights(now, dt) {
   const cx = W * 0.5, baseY = H * 0.82, topY = H * 0.16;
 
+  // cone lines
   ctx.save();
   ctx.strokeStyle = `rgba(255,255,255,${0.08 * brightness})`;
   ctx.lineWidth = 2;
@@ -394,6 +603,7 @@ function renderLights(now, dt) {
   ctx.stroke();
   ctx.restore();
 
+  // lights
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   for (const L of lights) {
@@ -405,6 +615,7 @@ function renderLights(now, dt) {
     ctx.beginPath();
     ctx.arc(L.x, L.y, r, 0, Math.PI * 2);
     ctx.fill();
+
     ctx.fillStyle = `hsla(${hue}, 95%, 62%, ${(0.02 + 0.10 * twk) * brightness})`;
     ctx.beginPath();
     ctx.arc(L.x, L.y, r * 4.2, 0, Math.PI * 2);
@@ -412,14 +623,16 @@ function renderLights(now, dt) {
   }
   ctx.restore();
 
+  // trunk
   ctx.save();
   ctx.fillStyle = `rgba(130,90,50,${0.85 * brightness})`;
   const tw = W * 0.03, th = H * 0.09;
-  ctx.roundRect(cx - tw / 2, baseY, tw, th, 10);
+  ctx.beginPath();
+  roundRectPath(cx - tw / 2, baseY, tw, th, 10);
   ctx.fill();
   ctx.restore();
 
-  // ✅ words on tree
+  // ✅ words (shape-aware)
   renderTreeText(now, dt, { cx, topY: H * 0.16, h: H * 0.66, maxRadius: W * 0.25, turns: 6.2 });
 
   drawStar(cx, topY - 22, Math.min(W, H) * 0.04);
@@ -454,7 +667,7 @@ function syncButtons() {
 
 ui.btnPlay.addEventListener("click", () => {
   playing = !playing;
-  if (!playing) { try { window.speechSynthesis?.cancel(); } catch(_) {} }
+  if (!playing) { try { window.speechSynthesis?.cancel(); } catch (_) {} }
   else { lastSwitch = performance.now(); }
   syncButtons();
 });
@@ -473,7 +686,7 @@ ui.btnShuffle.addEventListener("click", () => {
 
 ui.btnVoice.addEventListener("click", () => {
   voiceOn = !voiceOn;
-  if (!voiceOn) { try { window.speechSynthesis?.cancel(); } catch(_) {} }
+  if (!voiceOn) { try { window.speechSynthesis?.cancel(); } catch (_) {} }
   else { speak(`${ui.currentName.textContent}. ${ui.currentLine.textContent}`); }
   syncButtons();
 });
@@ -485,8 +698,15 @@ ui.treeStyle.addEventListener("change", () => {
   syncButtons();
 });
 
+/* ✅ OPTIONAL: let Speed dropdown also tune text scroll speed */
 ui.speed.addEventListener("change", () => {
   speedKey = ui.speed.value;
+
+  // You can change these 3 numbers to your taste:
+  if (speedKey === "slow")   TEXT_SPEED = 0.000035;
+  if (speedKey === "normal") TEXT_SPEED = 0.000045;
+  if (speedKey === "fast")   TEXT_SPEED = 0.000070;
+
   syncButtons();
 });
 
