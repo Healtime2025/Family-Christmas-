@@ -2,59 +2,51 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#0b0b0b" />
   <title>Mirror OS • Family Christmas Tree</title>
-
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" href="icon-192.png" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <canvas id="tree" aria-hidden="true"></canvas>
+  <canvas id="tree"></canvas>
 
-  <main class="ui" role="application">
-    <header class="top">
+  <div class="ui">
+    <div class="top">
       <div class="brand">
         <div class="badge">🎄</div>
         <div class="titles">
-          <div class="kicker">Mirror OS</div>
+          <div class="kicker">MIRROR OS</div>
           <h1>Family Christmas Tree</h1>
         </div>
       </div>
 
       <div class="now">
-        <div class="name" id="currentName">Family</div>
-        <div class="line" id="currentLine">Love lives here.</div>
+        <div class="name" id="currentName">—</div>
+        <div class="line" id="currentLine">—</div>
       </div>
-    </header>
+    </div>
 
-    <section class="card">
+    <div class="card">
       <div class="row">
-        <button class="btn primary" id="btnPlay" aria-pressed="true">⏸ Pause</button>
+        <button class="btn primary" id="btnPlay">⏸ Pause</button>
         <button class="btn" id="btnNext">⏭ Next</button>
         <button class="btn" id="btnShuffle">🔀 Shuffle: On</button>
         <button class="btn" id="btnVoice">🔊 Voice: Off</button>
-
-        <!-- ✅ Cinematic Mode -->
-        <button class="btn" id="btnCinematic" aria-pressed="false" title="Hide UI (Shortcut: C)">
-          🎬 Cinematic: Off
-        </button>
+        <button class="btn" id="btnCinematic">🎬 Cinematic: Off</button>
       </div>
 
-      <!-- ✅ Controls row 1 -->
-      <div class="row">
+      <div class="row" style="margin-top:12px">
         <label class="field">
           <span>Tree style</span>
           <select id="treeStyle">
-            <option value="gold">Golden Spiral</option>
-            <option value="lights">String Lights Cone</option>
+            <option value="gold" selected>Golden Spiral</option>
+            <option value="lights">Lights</option>
           </select>
         </label>
 
-        <!-- ✅ Name switching speed (kept) -->
         <label class="field">
-          <span>Switch speed</span>
+          <span>Switch speed (name change)</span>
           <select id="speed">
             <option value="slow">Slow</option>
             <option value="normal" selected>Normal</option>
@@ -64,25 +56,21 @@
 
         <label class="field">
           <span>Brightness</span>
-          <input id="brightness" type="range" min="0.6" max="1.6" step="0.05" value="1.0" />
+          <input id="brightness" type="range" min="0.35" max="1.35" step="0.01" value="1.00" />
         </label>
       </div>
 
-      <!-- ✅ Controls row 2 (TEXT + LOOK) -->
-      <div class="row">
-        <!-- 🎚 Text scroll speed (0 → max) -->
+      <div class="row" style="margin-top:12px">
         <label class="field">
           <span>Text flow speed</span>
-          <input id="textSpeed" type="range" min="0" max="100" step="1" value="45" />
+          <input id="textSpeed" type="range" min="0" max="100" step="1" value="35" />
         </label>
 
-        <!-- 🎨 Font size slider -->
         <label class="field">
           <span>Font size</span>
           <input id="fontSize" type="range" min="14" max="34" step="1" value="18" />
         </label>
 
-        <!-- 🌈 Color mode toggle -->
         <label class="field">
           <span>Color mode</span>
           <select id="colorMode">
@@ -93,9 +81,7 @@
         </label>
       </div>
 
-      <!-- ✅ Controls row 3 (SHAPE) -->
-      <div class="row">
-        <!-- 🔺 Shape dropdown -->
+      <div class="row" style="margin-top:12px">
         <label class="field">
           <span>Text shape</span>
           <select id="textShape">
@@ -108,35 +94,29 @@
           </select>
         </label>
 
-        <!-- Optional: container style (if your JS supports it) -->
         <label class="field">
           <span>Text container</span>
           <select id="textContainer">
+            <option value="none">None</option>
             <option value="ball" selected>Ball</option>
             <option value="pill">Pill</option>
             <option value="badge">Badge</option>
-            <option value="none">None</option>
           </select>
         </label>
       </div>
 
       <details class="edit">
-        <summary>Edit family & words</summary>
-        <p class="hint">
-          Open <code>app.js</code> to fully customize names, traits, and themes.
-          This panel shows what’s loaded right now.
-        </p>
-        <pre id="configPreview" class="preview" aria-label="Current configuration"></pre>
+        <summary>▶ Edit family & words</summary>
+        <div class="hint">Config preview (debug)</div>
+        <pre class="preview" id="configPreview">{}</pre>
       </details>
-    </section>
+    </div>
 
-    <footer class="foot">
-      <div class="tiny">
-        Offline-ready • Works on phone/TV • Built for love • Press <b>C</b> for Cinematic
-      </div>
-    </footer>
-  </main>
+    <div class="foot">
+      <div class="tiny">Tip: Click the canvas or press ESC for full-screen tree • Press C to toggle UI</div>
+    </div>
+  </div>
 
-  <script src="app.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
