@@ -1,18 +1,12 @@
-/* Mirror OS • Family Christmas Tree (v2.4) — UI sliders + toggles + shapes
-   - Animated tree (2 styles)
-   - Rotating family names + affirmations
-   - Pause/Play, Next, Shuffle, Speed, Brightness
-   - ✅ Words scroll ON the tree (canvas)
-   - ✅ UI: Font size slider, Color mode toggle, Text shape dropdown
-   - ✅ Text ornaments for clarity (balls/pills/badges)
-   - ✅ Cinematic mode (hide UI) + shortcut: C
-   - Optional voice (Web Speech API)
-   - Offline (service worker)
+/* Mirror OS • Family Christmas Tree (v2.5) — Commercial-grade controls
+   - ✅ Text speed slider (0 → max)
+   - ✅ Font size slider
+   - ✅ Color mode dropdown (single/palette/random)
+   - ✅ Text shape dropdown
+   - ✅ Ornament dropdown (none/ball/pill/badge)
+   - Speed dropdown is ONLY for member switching
 */
 
-/* ---------------------------
-   Family
---------------------------- */
 const FAMILY = [
   { name: "Dad", traits: ["visionary", "strong", "full of love", "protector", "builder of dreams"] },
   { name: "Mom", traits: ["gentle", "wise", "full of grace", "caring", "holds the home together"] },
@@ -40,25 +34,24 @@ const PHRASE_TEMPLATES = [
   (name, picks) => `${name}… ${picks.join(". ")}.`,
   (name, picks) => `${name} — ${picks.join(" • ")}.`,
   (name, picks) => `We celebrate ${name}: ${picks.join(", ")}.`,
-  (name, picks) =>
-    `${name}: ${picks[0]}. ${picks[1] ? picks[1] + "." : ""} ${picks[2] ? picks[2] + "." : ""}`.trim(),
+  (name, picks) => `${name}: ${picks[0]}. ${picks[1] ? picks[1] + "." : ""} ${picks[2] ? picks[2] + "." : ""}`.trim(),
 ];
 
-/* ---------------------------
-   UI timing (name switching)
---------------------------- */
 const SPEEDS = { slow: 5200, normal: 3600, fast: 2400 };
 
 /* ===============================
    TEXT CONTROLS (defaults)
 ================================= */
-let TEXT_SPEED = 0.000045;
+// Text speed is controlled by slider now.
+// We store the slider value 0..100 and map it to usable speed.
+let TEXT_SPEED_SLIDER = 35; // 0..100
+let TEXT_SPEED = 0.000045;  // derived from slider
 
 let TEXT_FONT_FAMILY = `"Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
-let TEXT_FONT_SIZE = 18;        // now controlled by slider
+let TEXT_FONT_SIZE = 18;
 let TEXT_FONT_WEIGHT = 800;
 
-let TEXT_COLOR_MODE = "palette"; // now controlled by dropdown
+let TEXT_COLOR_MODE = "palette";
 let TEXT_SINGLE_COLOR = "hsl(45, 90%, 72%)";
 let TEXT_COLOR_PALETTE = [
   "hsl(45, 90%, 72%)",
@@ -70,25 +63,19 @@ let TEXT_COLOR_PALETTE = [
 
 let TEXT_GLOW_BLUR = 16;
 
-/* ===============================
-   SHAPE CONTROL (now via dropdown)
-================================= */
 let TEXT_SHAPE = "tree";
 let TEXT_SHAPE_RADIUS = 0.28;
 
-/* ===============================
-   ORNAMENT CONTROL (clarity)
-================================= */
-let TEXT_CONTAINER = "ball"; // "none" | "ball" | "pill" | "badge"
+let TEXT_CONTAINER = "ball"; // none | ball | pill | badge
 let ORNAMENT_PADDING_X = 12;
 let ORNAMENT_PADDING_Y = 8;
 let ORNAMENT_BG_COLOR = "rgba(10,10,14,0.48)";
 let ORNAMENT_BORDER_COLOR = "rgba(255,255,255,0.35)";
 let ORNAMENT_GLOW = 12;
 
-/* ---------------------------
+/* ===============================
    DOM / Canvas
---------------------------- */
+================================= */
 const el = (id) => document.getElementById(id);
 const canvas = el("tree");
 const ctx = canvas.getContext("2d");
@@ -105,10 +92,11 @@ const ui = {
   speed: el("speed"),
   brightness: el("brightness"),
 
-  // ✅ NEW UI controls
+  textSpeed: el("textSpeed"),
   fontSize: el("fontSize"),
   colorMode: el("colorMode"),
   textShape: el("textShape"),
+  textContainer: el("textContainer"),
 
   configPreview: el("configPreview"),
 };
@@ -128,9 +116,9 @@ function resize() {
 }
 window.addEventListener("resize", resize, { passive: true });
 
-/* ---------------------------
+/* ===============================
    State
---------------------------- */
+================================= */
 let playing = true;
 let voiceOn = false;
 let shuffleOn = true;
@@ -144,17 +132,15 @@ let speakToken = 0;
 let cinematic = false;
 let treeText = [];
 
-/* ---------------------------
+/* ===============================
    Helpers
---------------------------- */
+================================= */
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function lerp(a, b, t) { return a + (b - a) * t; }
 
 function roundRectPath(x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
-  if (ctx.roundRect) {
-    ctx.roundRect(x, y, w, h, rr);
-    return;
-  }
+  if (ctx.roundRect) { ctx.roundRect(x, y, w, h, rr); return; }
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
   ctx.arcTo(x + w, y, x + w, y + h, rr);
@@ -164,9 +150,23 @@ function roundRectPath(x, y, w, h, r) {
   ctx.closePath();
 }
 
-/* ---------------------------
-   Order / Phrase
---------------------------- */
+/* ✅ Slider-to-speed mapping (commercial: full range) */
+function updateTextSpeedFromSlider() {
+  // 0..100 → 0..1
+  const t = clamp(TEXT_SPEED_SLIDER / 100, 0, 1);
+
+  // Feel: low end almost still, high end energetic.
+  // Min and max tuned for canvas readability.
+  const min = 0.000000;  // true zero (stops motion)
+  const max = 0.000120;  // fast but still readable
+  TEXT_SPEED = lerp(min, max, t);
+
+  // If you want no "dead stop", use: min = 0.000005
+}
+
+/* ===============================
+   Order / phrase
+================================= */
 function makeOrder() {
   order = FAMILY.map((_, i) => i);
   if (shuffleOn) shuffle(order);
@@ -182,7 +182,6 @@ function pickAffirmation(member) {
   const base = [...member.traits];
   const addN = Math.random() < 0.65 ? 1 : 2;
   for (let i = 0; i < addN; i++) base.push(EXTRA_TRAITS[(Math.random() * EXTRA_TRAITS.length) | 0]);
-
   const uniq = [...new Set(base)];
   shuffle(uniq);
 
@@ -200,8 +199,9 @@ function setNow(member, line) {
     ui.configPreview.textContent = JSON.stringify(
       {
         treeMode, shuffleOn, voiceOn, cinematic,
-        speed: speedKey, brightness,
-        TEXT_FONT_SIZE, TEXT_COLOR_MODE, TEXT_SHAPE,
+        speedKey, brightness,
+        TEXT_SPEED_SLIDER, TEXT_SPEED,
+        TEXT_FONT_SIZE, TEXT_COLOR_MODE, TEXT_SHAPE, TEXT_CONTAINER
       },
       null,
       2
@@ -209,9 +209,9 @@ function setNow(member, line) {
   }
 }
 
-/* ---------------------------
+/* ===============================
    Voice
---------------------------- */
+================================= */
 function speak(text) {
   if (!voiceOn) return;
   if (!("speechSynthesis" in window)) return;
@@ -227,9 +227,9 @@ function speak(text) {
   } catch (_) {}
 }
 
-/* ---------------------------
-   Text spawn
---------------------------- */
+/* ===============================
+   Text spawn / color
+================================= */
 function pickTextColor() {
   if (TEXT_COLOR_MODE === "single") return TEXT_SINGLE_COLOR;
   if (TEXT_COLOR_MODE === "palette") return TEXT_COLOR_PALETTE[(Math.random() * TEXT_COLOR_PALETTE.length) | 0];
@@ -242,12 +242,15 @@ function spawnTreeText(text) {
   const spacing = 0.045;
 
   words.forEach((word, i) => {
+    const baseSpeed = TEXT_SPEED;
+    const jitter = baseSpeed * 0.30;
     treeText.push({
       word,
       u: startU + i * spacing,
       life: 1.0,
       alpha: 0.0,
-      speed: TEXT_SPEED + Math.random() * (TEXT_SPEED * 0.30),
+      // If TEXT_SPEED is zero: all words will remain in place (ornaments still visible).
+      speed: Math.max(0, baseSpeed + (Math.random() * jitter)),
       wobble: Math.random() * Math.PI * 2,
       color: pickTextColor(),
     });
@@ -256,9 +259,9 @@ function spawnTreeText(text) {
   if (treeText.length > 260) treeText.splice(0, treeText.length - 260);
 }
 
-/* ---------------------------
+/* ===============================
    Shape positioning
---------------------------- */
+================================= */
 function getTextPosition(u, cfg, now) {
   const { cx, topY, h, maxRadius, turns } = cfg;
 
@@ -283,10 +286,7 @@ function getTextPosition(u, cfg, now) {
       };
     }
     case "wave": {
-      return {
-        x: W * 0.15 + u * W * 0.7,
-        y: H * 0.55 + Math.sin(u * Math.PI * 4 + now / 900) * 24
-      };
+      return { x: W * 0.15 + u * W * 0.7, y: H * 0.55 + Math.sin(u * Math.PI * 4 + now / 900) * 24 };
     }
     case "pillar": {
       return { x: cx, y: topY + u * h };
@@ -309,9 +309,9 @@ function hslToHsla(hsl, a) {
   return String(hsl).replace(/^hsl\(/, "hsla(").replace(/\)\s*$/, `, ${a})`);
 }
 
-/* ---------------------------
+/* ===============================
    Render text
---------------------------- */
+================================= */
 function renderTreeText(now, dt, cfg) {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
@@ -323,7 +323,10 @@ function renderTreeText(now, dt, cfg) {
   treeText = treeText.filter((t) => t.life > 0);
 
   for (const t of treeText) {
-    t.u -= t.speed * dt;
+    // Movement speed in dt units
+    t.u -= (t.speed || 0) * dt;
+
+    // fade
     t.life -= 0.00018 * dt;
     t.alpha = Math.min(1, t.alpha + 0.010);
 
@@ -332,7 +335,6 @@ function renderTreeText(now, dt, cfg) {
 
     const scale = clamp(1.10 - t.u * 0.55, 0.62, 1.12);
 
-    // measure for container
     const metrics = ctx.measureText(t.word);
     const textW = metrics.width;
     const textH = TEXT_FONT_SIZE * 1.18;
@@ -347,6 +349,7 @@ function renderTreeText(now, dt, cfg) {
     if (TEXT_CONTAINER !== "none") {
       ctx.save();
       ctx.globalAlpha = a;
+
       ctx.shadowBlur = ORNAMENT_GLOW;
       ctx.shadowColor = ORNAMENT_BORDER_COLOR;
       ctx.fillStyle = ORNAMENT_BG_COLOR;
@@ -370,6 +373,7 @@ function renderTreeText(now, dt, cfg) {
         ctx.fill();
         ctx.stroke();
       }
+
       ctx.restore();
     }
 
@@ -377,31 +381,34 @@ function renderTreeText(now, dt, cfg) {
     ctx.fillStyle = fill;
     ctx.shadowColor = fill;
     ctx.shadowBlur = TEXT_GLOW_BLUR;
-
     ctx.fillText(t.word, 0, 0);
+
     ctx.restore();
   }
 
   ctx.restore();
 }
 
-/* ---------------------------
+/* ===============================
    Member cycle
---------------------------- */
+================================= */
 function nextMember() {
   if (order.length !== FAMILY.length) makeOrder();
   const member = FAMILY[order[idx % order.length]];
   const line = pickAffirmation(member);
+
   setNow(member, line);
   spawnTreeText(line);
+
   speak(`${member.name}. ${line.replace(member.name, "").replace("…", "").replace("—", "").trim()}`);
+
   idx++;
   if (idx % order.length === 0) makeOrder();
 }
 
-/* ---------------------------
+/* ===============================
    Tree visuals
---------------------------- */
+================================= */
 const CYAN = { r: 120, g: 215, b: 255 };
 function rgba(c, a) { return `rgba(${c.r},${c.g},${c.b},${a})`; }
 
@@ -421,12 +428,7 @@ function initGold() {
     const ang = u * 8.0 * Math.PI + Math.random() * 0.25;
     const x = cx + Math.cos(ang) * radius + (Math.random() - 0.5) * 10;
     const size = 1 + (u * 2.6) + Math.random() * 1.4;
-    particles.push({
-      baseX: x, baseY: y,
-      u, ang, radius, size,
-      tw: Math.random() * 2 * Math.PI,
-      drift: (Math.random() - 0.5) * 0.35,
-    });
+    particles.push({ baseX: x, baseY: y, u, ang, radius, size, tw: Math.random() * 2 * Math.PI, drift: (Math.random() - 0.5) * 0.35 });
   }
 }
 
@@ -444,11 +446,7 @@ function initLights() {
       const a = (i / count) * 2 * Math.PI + (b % 2 ? 0.15 : 0);
       const x = cx + Math.cos(a) * radius;
       const wobble = (Math.random() - 0.5) * 6;
-      lights.push({
-        x, y: y + wobble, a, radius, u,
-        hue: (i * 18 + b * 14) % 360,
-        tw: Math.random() * 2 * Math.PI
-      });
+      lights.push({ x, y: y + wobble, a, radius, u, hue: (i * 18 + b * 14) % 360, tw: Math.random() * 2 * Math.PI });
     }
   }
 }
@@ -591,9 +589,9 @@ function draw(now) {
   else renderGold(now, dt);
 }
 
-/* ---------------------------
+/* ===============================
    UI
---------------------------- */
+================================= */
 function syncButtons() {
   ui.btnPlay.textContent = playing ? "⏸ Pause" : "▶️ Play";
   ui.btnPlay.setAttribute("aria-pressed", String(playing));
@@ -603,10 +601,11 @@ function syncButtons() {
   ui.speed.value = speedKey;
   ui.brightness.value = String(brightness);
 
-  // sync NEW UI controls
+  if (ui.textSpeed) ui.textSpeed.value = String(TEXT_SPEED_SLIDER);
   if (ui.fontSize) ui.fontSize.value = String(TEXT_FONT_SIZE);
   if (ui.colorMode) ui.colorMode.value = String(TEXT_COLOR_MODE);
   if (ui.textShape) ui.textShape.value = String(TEXT_SHAPE);
+  if (ui.textContainer) ui.textContainer.value = String(TEXT_CONTAINER);
 
   if (ui.btnCinematic) {
     ui.btnCinematic.textContent = `🎬 Cinematic: ${cinematic ? "On" : "Off"}`;
@@ -648,14 +647,9 @@ ui.treeStyle.addEventListener("change", () => {
   syncButtons();
 });
 
+/* Switch speed is ONLY how often names change */
 ui.speed.addEventListener("change", () => {
   speedKey = ui.speed.value;
-
-  // keep your old mapping if you like
-  if (speedKey === "slow")   TEXT_SPEED = 0.000035;
-  if (speedKey === "normal") TEXT_SPEED = 0.000045;
-  if (speedKey === "fast")   TEXT_SPEED = 0.000070;
-
   syncButtons();
 });
 
@@ -663,19 +657,35 @@ ui.brightness.addEventListener("input", () => {
   brightness = Number(ui.brightness.value);
 });
 
-/* ✅ NEW: Font size slider */
+/* ✅ Text speed slider: ultimate control */
+ui.textSpeed?.addEventListener("input", () => {
+  TEXT_SPEED_SLIDER = Number(ui.textSpeed.value);
+  updateTextSpeedFromSlider();
+  syncButtons();
+});
+
+/* ✅ Font size slider */
 ui.fontSize?.addEventListener("input", () => {
   TEXT_FONT_SIZE = Number(ui.fontSize.value);
+  syncButtons();
 });
 
-/* ✅ NEW: Color mode toggle */
+/* ✅ Color mode dropdown */
 ui.colorMode?.addEventListener("change", () => {
   TEXT_COLOR_MODE = ui.colorMode.value;
+  syncButtons();
 });
 
-/* ✅ NEW: Text shape dropdown */
+/* ✅ Text shape dropdown */
 ui.textShape?.addEventListener("change", () => {
   TEXT_SHAPE = ui.textShape.value;
+  syncButtons();
+});
+
+/* ✅ Ornament dropdown */
+ui.textContainer?.addEventListener("change", () => {
+  TEXT_CONTAINER = ui.textContainer.value;
+  syncButtons();
 });
 
 function toggleCinematic() {
@@ -701,11 +711,15 @@ function tick(now) {
   requestAnimationFrame(tick);
 }
 
-/* ---------------------------
+/* ===============================
    Boot
---------------------------- */
+================================= */
 function boot() {
   resize();
+
+  // init speed from slider default
+  updateTextSpeedFromSlider();
+
   initGold();
   initLights();
   makeOrder();
