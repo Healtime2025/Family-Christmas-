@@ -1,11 +1,8 @@
-/* Mirror OS • Family Christmas Tree (v2.5.1) — Commercial-grade controls (fixed)
-   - ✅ Text speed slider (0 → max) affects ALL words (existing + new)
-   - ✅ Font size slider
-   - ✅ Color mode dropdown (single/palette/random)
-   - ✅ Text shape dropdown
-   - ✅ Ornament dropdown (none/ball/pill/badge)
-   - ✅ Speed dropdown is ONLY for member switching
-   - ✅ Cinematic: button + C, auto-hide after idle, canvas click toggles
+/* Mirror OS • Family Christmas Tree (v2.6) — Visibility + Full Upward Travel
+   - Brighter bubbles + thicker border + stronger glow
+   - Text stroke + stronger glow (distance safe)
+   - Words travel to the star (fade only AFTER passing top)
+   - Your cinematic + auto-hide logic preserved
 */
 
 /* ---------------------------
@@ -20,18 +17,9 @@ const FAMILY = [
 ];
 
 const EXTRA_TRAITS = [
-  "deeply appreciated",
-  "a blessing to the family",
-  "a light in the room",
-  "full of purpose",
-  "brings joy",
-  "brings peace",
-  "resilient",
-  "courageous",
-  "faith-filled",
-  "thoughtful",
-  "fun to be around",
-  "a gift from God",
+  "deeply appreciated","a blessing to the family","a light in the room","full of purpose",
+  "brings joy","brings peace","resilient","courageous","faith-filled","thoughtful",
+  "fun to be around","a gift from God",
 ];
 
 const PHRASE_TEMPLATES = [
@@ -42,44 +30,52 @@ const PHRASE_TEMPLATES = [
     `${name}: ${picks[0]}. ${picks[1] ? picks[1] + "." : ""} ${picks[2] ? picks[2] + "." : ""}`.trim(),
 ];
 
-/* ---------------------------
-   Timing (name switching ONLY)
---------------------------- */
+/* Name switching ONLY */
 const SPEEDS = { slow: 5200, normal: 3600, fast: 2400 };
 
 /* ===============================
-   TEXT CONTROLS (defaults)
+   TEXT CONTROLS
 ================================= */
-let TEXT_SPEED_SLIDER = 35; // 0..100 (UI)
-let TEXT_SPEED = 0.000045;  // derived from slider
+let TEXT_SPEED_SLIDER = 35; // 0..100
+let TEXT_SPEED = 0.000045;  // derived
 
 let TEXT_FONT_FAMILY = `"Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
 let TEXT_FONT_SIZE = 18;
-let TEXT_FONT_WEIGHT = 800;
+let TEXT_FONT_WEIGHT = 850;
 
-let TEXT_COLOR_MODE = "palette"; // single | palette | random
-let TEXT_SINGLE_COLOR = "hsl(45, 90%, 72%)";
+/* ✅ stronger, clearer */
+let TEXT_GLOW_BLUR = 26;
+let TEXT_STROKE_WIDTH = 3.2;
+let TEXT_STROKE_COLOR = "rgba(0,0,0,0.80)"; // distance-safe outline
+
+let TEXT_COLOR_MODE = "palette";
+let TEXT_SINGLE_COLOR = "hsl(45, 90%, 78%)";
 let TEXT_COLOR_PALETTE = [
-  "hsl(45, 90%, 72%)",
-  "hsl(200, 92%, 72%)",
-  "hsl(330, 86%, 72%)",
-  "hsl(120, 65%, 70%)",
-  "hsl(18, 92%, 72%)",
+  "hsl(45, 90%, 78%)",
+  "hsl(200, 95%, 78%)",
+  "hsl(330, 90%, 78%)",
+  "hsl(120, 75%, 76%)",
+  "hsl(18, 95%, 78%)",
 ];
 
-let TEXT_GLOW_BLUR = 16;
-
-/* shape */
 let TEXT_SHAPE = "tree";
 let TEXT_SHAPE_RADIUS = 0.28;
 
-/* ornament container */
-let TEXT_CONTAINER = "ball"; // none | ball | pill | badge
-let ORNAMENT_PADDING_X = 12;
-let ORNAMENT_PADDING_Y = 8;
-let ORNAMENT_BG_COLOR = "rgba(10,10,14,0.48)";
-let ORNAMENT_BORDER_COLOR = "rgba(255,255,255,0.35)";
-let ORNAMENT_GLOW = 12;
+/* ✅ bubbles: stronger visibility */
+let TEXT_CONTAINER = "ball";
+let ORNAMENT_PADDING_X = 14;
+let ORNAMENT_PADDING_Y = 10;
+let ORNAMENT_BG_COLOR = "rgba(25,25,35,0.82)";
+let ORNAMENT_BORDER_COLOR = "rgba(255,255,255,0.82)";
+let ORNAMENT_GLOW = 26;
+
+/* ✅ travel tuning (top reach) */
+const FLOW = {
+  startU: 0.98,      // spawn near bottom
+  spacing: 0.040,    // word spacing
+  endU: -0.10,       // remove AFTER passing top
+  fadeStartU: 0.06,  // begin fading very close to the top
+};
 
 /* ---------------------------
    DOM / Canvas
@@ -132,7 +128,7 @@ let playing = true;
 let voiceOn = false;
 let shuffleOn = true;
 
-let treeMode = "gold"; // gold | lights
+let treeMode = "gold";
 let brightness = 1.0;
 let speedKey = "normal";
 
@@ -164,17 +160,12 @@ function roundRectPath(x, y, w, h, r) {
   ctx.closePath();
 }
 
-/* ===============================
-   ✅ Slider-to-speed mapping
-   0..100 -> 0..max with a soft curve
-================================= */
+/* ✅ Speed slider mapping */
 function updateTextSpeedFromSlider() {
   const t = clamp(TEXT_SPEED_SLIDER / 100, 0, 1);
-
-  // A curve that gives ultra-fine control at the low end
-  const curved = t * t; // quadratic
-  const min = 0.0;      // true stop
-  const max = 0.000120; // fast but still readable
+  const curved = t * t;        // fine control at low end
+  const min = 0.0;             // true stop
+  const max = 0.000140;        // faster ceiling so it can reach the star
   TEXT_SPEED = lerp(min, max, curved);
 }
 
@@ -215,8 +206,7 @@ function setNow(member, line) {
       {
         treeMode, shuffleOn, voiceOn, cinematic,
         switchSpeed: speedKey, brightness,
-        textSpeedSlider: TEXT_SPEED_SLIDER,
-        textSpeed: TEXT_SPEED,
+        textSpeedSlider: TEXT_SPEED_SLIDER, textSpeed: TEXT_SPEED,
         fontSize: TEXT_FONT_SIZE,
         colorMode: TEXT_COLOR_MODE,
         shape: TEXT_SHAPE,
@@ -252,29 +242,24 @@ function speak(text) {
 function pickTextColor() {
   if (TEXT_COLOR_MODE === "single") return TEXT_SINGLE_COLOR;
   if (TEXT_COLOR_MODE === "palette") return TEXT_COLOR_PALETTE[(Math.random() * TEXT_COLOR_PALETTE.length) | 0];
-  return `hsl(${Math.random() * 360}, 85%, 70%)`;
+  return `hsl(${Math.random() * 360}, 90%, 78%)`;
 }
 
+/* ✅ Spawn: words start near bottom and travel to star */
 function spawnTreeText(text) {
   const words = String(text).split(/\s+/).filter(Boolean);
-  const startU = 0.86;
-  const spacing = 0.045;
 
   words.forEach((word, i) => {
     treeText.push({
       word,
-      u: startU + i * spacing,
-      life: 1.0,
+      u: FLOW.startU + i * FLOW.spacing,
       alpha: 0.0,
-
-      // IMPORTANT: speed is now global (TEXT_SPEED) + per-word multiplier
       mult: 1 + Math.random() * 0.30,
-
       color: pickTextColor(),
     });
   });
 
-  if (treeText.length > 260) treeText.splice(0, treeText.length - 260);
+  if (treeText.length > 320) treeText.splice(0, treeText.length - 320);
 }
 
 /* ---------------------------
@@ -328,30 +313,42 @@ function hslToHsla(hsl, a) {
 }
 
 /* ---------------------------
-   Render text
+   Render text (✅ bold + readable)
 --------------------------- */
 function renderTreeText(now, dt, cfg) {
   ctx.save();
-  ctx.globalCompositeOperation = "lighter";
+
+  /* ✅ IMPORTANT: use source-over for strong opacity */
+  ctx.globalCompositeOperation = "source-over";
 
   ctx.font = `${TEXT_FONT_WEIGHT} ${TEXT_FONT_SIZE}px ${TEXT_FONT_FAMILY}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
-  treeText = treeText.filter((t) => t.life > 0);
+  const alive = [];
 
   for (const t of treeText) {
-    // ✅ global speed affects ALL words, even existing ones
+    // ✅ move upward (u decreasing -> goes to top)
     const step = (TEXT_SPEED * (t.mult || 1)) || 0;
     t.u -= step * dt;
 
-    // fade
-    t.life -= 0.00018 * dt;
-    t.alpha = Math.min(1, t.alpha + 0.010);
+    // warm-in
+    t.alpha = Math.min(1, t.alpha + 0.014);
+
+    // remove after passing top
+    if (t.u < FLOW.endU) continue;
+
+    // ✅ strong visibility (distance safe)
+    let a = clamp((0.60 + 0.40 * t.alpha) * brightness, 0, 1);
+
+    // fade only near the very top / after passing top
+    if (t.u < FLOW.fadeStartU) {
+      const fade = clamp((t.u - FLOW.endU) / (FLOW.fadeStartU - FLOW.endU), 0, 1);
+      a *= fade;
+    }
 
     const pos = getTextPosition(t.u, cfg, now);
-    const a = clamp(t.alpha * t.life * brightness, 0, 1);
-    const scale = clamp(1.10 - t.u * 0.55, 0.62, 1.12);
+    const scale = clamp(1.12 - t.u * 0.55, 0.66, 1.16);
 
     const metrics = ctx.measureText(t.word);
     const textW = metrics.width;
@@ -364,6 +361,7 @@ function renderTreeText(now, dt, cfg) {
     ctx.translate(pos.x, pos.y);
     ctx.scale(scale, scale);
 
+    /* ✅ Ornament container */
     if (TEXT_CONTAINER !== "none") {
       ctx.save();
       ctx.globalAlpha = a;
@@ -372,14 +370,21 @@ function renderTreeText(now, dt, cfg) {
       ctx.shadowColor = ORNAMENT_BORDER_COLOR;
       ctx.fillStyle = ORNAMENT_BG_COLOR;
       ctx.strokeStyle = ORNAMENT_BORDER_COLOR;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 2.2;
 
       if (TEXT_CONTAINER === "ball") {
-        const r = Math.max(boxW, boxH) * 0.60;
+        const r = Math.max(boxW, boxH) * 0.62;
         ctx.beginPath();
         ctx.arc(0, 0, r, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
+
+        // extra highlight glow (makes it pop far away)
+        ctx.globalAlpha = a * 0.35;
+        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        ctx.beginPath();
+        ctx.arc(-r * 0.25, -r * 0.25, r * 0.42, 0, Math.PI * 2);
+        ctx.fill();
       } else if (TEXT_CONTAINER === "pill") {
         ctx.beginPath();
         roundRectPath(-boxW / 2, -boxH / 2, boxW, boxH, boxH / 2);
@@ -387,22 +392,35 @@ function renderTreeText(now, dt, cfg) {
         ctx.stroke();
       } else if (TEXT_CONTAINER === "badge") {
         ctx.beginPath();
-        roundRectPath(-boxW / 2, -boxH / 2, boxW, boxH, 10);
+        roundRectPath(-boxW / 2, -boxH / 2, boxW, boxH, 12);
         ctx.fill();
         ctx.stroke();
       }
+
       ctx.restore();
     }
 
+    /* ✅ Text (stroke + glow) */
     const fill = hslToHsla(t.color, a);
+
+    // stroke
+    ctx.globalAlpha = a;
+    ctx.lineWidth = TEXT_STROKE_WIDTH;
+    ctx.strokeStyle = TEXT_STROKE_COLOR;
+    ctx.strokeText(t.word, 0, 0);
+
+    // fill + glow
     ctx.fillStyle = fill;
     ctx.shadowColor = fill;
     ctx.shadowBlur = TEXT_GLOW_BLUR;
     ctx.fillText(t.word, 0, 0);
 
     ctx.restore();
+
+    alive.push(t);
   }
 
+  treeText = alive;
   ctx.restore();
 }
 
@@ -424,7 +442,7 @@ function nextMember() {
 }
 
 /* ---------------------------
-   Tree visuals
+   Tree visuals (your originals)
 --------------------------- */
 const CYAN = { r: 120, g: 215, b: 255 };
 function rgba(c, a) { return `rgba(${c.r},${c.g},${c.b},${a})`; }
@@ -623,7 +641,7 @@ const UI_IDLE_MS = 2500;
 function setCinematic(on) {
   cinematic = !!on;
   syncButtons();
-  if (!cinematic) resetUiIdleTimer(); // if UI is open, start auto-hide
+  if (!cinematic) resetUiIdleTimer();
 }
 
 function resetUiIdleTimer() {
@@ -633,7 +651,6 @@ function resetUiIdleTimer() {
 }
 
 function noteUiActivity() {
-  // Any user interaction with UI shows it (if hidden) and restarts timer
   if (cinematic) setCinematic(false);
   resetUiIdleTimer();
 }
@@ -699,7 +716,6 @@ ui.btnVoice?.addEventListener("click", () => {
 });
 
 ui.btnCinematic?.addEventListener("click", () => {
-  // toggle cinematic manually
   setCinematic(!cinematic);
 });
 
@@ -711,7 +727,6 @@ ui.treeStyle?.addEventListener("change", () => {
   syncButtons();
 });
 
-/* switch speed ONLY */
 ui.speed?.addEventListener("change", () => {
   noteUiActivity();
   speedKey = ui.speed.value;
@@ -723,7 +738,6 @@ ui.brightness?.addEventListener("input", () => {
   brightness = Number(ui.brightness.value);
 });
 
-/* text flow speed */
 ui.textSpeed?.addEventListener("input", () => {
   noteUiActivity();
   TEXT_SPEED_SLIDER = Number(ui.textSpeed.value);
@@ -761,18 +775,14 @@ window.addEventListener("keydown", (e) => {
   if (k === "c") {
     setCinematic(!cinematic);
   } else if (e.key === "Escape") {
-    // ESC always hides panel (full-screen tree)
     setCinematic(true);
   } else {
-    // any other key = reveal controls if hidden
     if (cinematic) noteUiActivity();
   }
 });
 
 /* Canvas click toggles UI */
 canvas.addEventListener("click", () => {
-  // If UI is visible, hide it (full-screen).
-  // If UI is hidden, show it.
   setCinematic(!cinematic);
 });
 
@@ -797,15 +807,12 @@ function tick(now) {
 --------------------------- */
 function boot() {
   resize();
-
-  updateTextSpeedFromSlider(); // init text speed
+  updateTextSpeedFromSlider();
   initGold();
   initLights();
   makeOrder();
   nextMember();
   syncButtons();
-
-  // start with UI visible, then auto-hide after idle
   setCinematic(false);
 
   if ("serviceWorker" in navigator) {
@@ -818,5 +825,4 @@ function boot() {
     tick(now);
   });
 }
-
 boot();
