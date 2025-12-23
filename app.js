@@ -1,11 +1,10 @@
-/* Mirror OS • Family Christmas Tree (v2.3) — All requested mods (NO Step-2 helper function)
+/* Mirror OS • Family Christmas Tree (v2.4) — UI sliders + toggles + shapes
    - Animated tree (2 styles)
    - Rotating family names + affirmations
    - Pause/Play, Next, Shuffle, Speed, Brightness
-   - ✅ Words scroll ON the tree (canvas) — gentle + multi-color
-   - ✅ YOU control: text speed, colors, font, size
-   - ✅ Text can be placed into different SHAPES (tree/circle/heart/wave/pillar/star)
-   - ✅ Text can render inside ORNAMENTS (Christmas balls / pills / badges) for clarity
+   - ✅ Words scroll ON the tree (canvas)
+   - ✅ UI: Font size slider, Color mode toggle, Text shape dropdown
+   - ✅ Text ornaments for clarity (balls/pills/badges)
    - ✅ Cinematic mode (hide UI) + shortcut: C
    - Optional voice (Web Speech API)
    - Offline (service worker)
@@ -50,49 +49,39 @@ const PHRASE_TEMPLATES = [
 --------------------------- */
 const SPEEDS = { slow: 5200, normal: 3600, fast: 2400 };
 
-/* ==========================================================
-   ✅ TEXT CONTROLS — YOU OWN THESE
-   (Change values here any time)
-========================================================== */
+/* ===============================
+   TEXT CONTROLS (defaults)
+================================= */
+let TEXT_SPEED = 0.000045;
 
-// 1) Text scroll speed (smaller = slower)
-let TEXT_SPEED = 0.000045; // try: 0.000035 (very gentle) → 0.00008 (festive)
-
-// 2) Font & size
 let TEXT_FONT_FAMILY = `"Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
-let TEXT_FONT_SIZE = 18; // px (try 16–26)
-let TEXT_FONT_WEIGHT = 800; // 600–900
+let TEXT_FONT_SIZE = 18;        // now controlled by slider
+let TEXT_FONT_WEIGHT = 800;
 
-// 3) Color system
-let TEXT_COLOR_MODE = "palette"; // "single" | "palette" | "random"
-let TEXT_SINGLE_COLOR = "hsl(45, 90%, 72%)"; // warm gold
+let TEXT_COLOR_MODE = "palette"; // now controlled by dropdown
+let TEXT_SINGLE_COLOR = "hsl(45, 90%, 72%)";
 let TEXT_COLOR_PALETTE = [
-  "hsl(45, 90%, 72%)",   // gold
-  "hsl(200, 92%, 72%)",  // sky blue
-  "hsl(330, 86%, 72%)",  // rose
-  "hsl(120, 65%, 70%)",  // green
-  "hsl(18, 92%, 72%)",   // orange
+  "hsl(45, 90%, 72%)",
+  "hsl(200, 92%, 72%)",
+  "hsl(330, 86%, 72%)",
+  "hsl(120, 65%, 70%)",
+  "hsl(18, 92%, 72%)",
 ];
 
-// 4) Glow
-let TEXT_GLOW_BLUR = 16; // 10–24 looks best
+let TEXT_GLOW_BLUR = 16;
 
-/* ==========================================================
-   ✅ SHAPE CONTROL (text placement)
-========================================================== */
+/* ===============================
+   SHAPE CONTROL (now via dropdown)
+================================= */
 let TEXT_SHAPE = "tree";
-// "tree" | "circle" | "heart" | "wave" | "pillar" | "star"
-let TEXT_SHAPE_RADIUS = 0.28; // used by circle/heart/star (relative to screen width)
+let TEXT_SHAPE_RADIUS = 0.28;
 
-/* ==========================================================
-   ✅ ORNAMENT CONTROL (text in balls/bullets)
-========================================================== */
-let TEXT_CONTAINER = "ball";
-// "none" | "ball" | "pill" | "badge"
-
+/* ===============================
+   ORNAMENT CONTROL (clarity)
+================================= */
+let TEXT_CONTAINER = "ball"; // "none" | "ball" | "pill" | "badge"
 let ORNAMENT_PADDING_X = 12;
 let ORNAMENT_PADDING_Y = 8;
-
 let ORNAMENT_BG_COLOR = "rgba(10,10,14,0.48)";
 let ORNAMENT_BORDER_COLOR = "rgba(255,255,255,0.35)";
 let ORNAMENT_GLOW = 12;
@@ -115,6 +104,12 @@ const ui = {
   treeStyle: el("treeStyle"),
   speed: el("speed"),
   brightness: el("brightness"),
+
+  // ✅ NEW UI controls
+  fontSize: el("fontSize"),
+  colorMode: el("colorMode"),
+  textShape: el("textShape"),
+
   configPreview: el("configPreview"),
 };
 
@@ -139,27 +134,21 @@ window.addEventListener("resize", resize, { passive: true });
 let playing = true;
 let voiceOn = false;
 let shuffleOn = true;
-let treeMode = "gold"; // "gold" | "lights"
+let treeMode = "gold";
 let brightness = 1.0;
 let speedKey = "normal";
 let idx = 0;
 let order = [];
 let lastSwitch = 0;
 let speakToken = 0;
-
-/* ✅ Cinematic mode */
 let cinematic = false;
-
-/* ✅ Scrolling words */
 let treeText = [];
 
 /* ---------------------------
-   Small helpers
+   Helpers
 --------------------------- */
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-function lerp(a, b, t) { return a + (b - a) * t; }
 
-/* roundRect fallback */
 function roundRectPath(x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
   if (ctx.roundRect) {
@@ -176,13 +165,12 @@ function roundRectPath(x, y, w, h, r) {
 }
 
 /* ---------------------------
-   Order / Phrases
+   Order / Phrase
 --------------------------- */
 function makeOrder() {
   order = FAMILY.map((_, i) => i);
   if (shuffleOn) shuffle(order);
 }
-
 function shuffle(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
     const j = (Math.random() * (i + 1)) | 0;
@@ -190,7 +178,6 @@ function shuffle(arr) {
   }
   return arr;
 }
-
 function pickAffirmation(member) {
   const base = [...member.traits];
   const addN = Math.random() < 0.65 ? 1 : 2;
@@ -214,9 +201,7 @@ function setNow(member, line) {
       {
         treeMode, shuffleOn, voiceOn, cinematic,
         speed: speedKey, brightness,
-        TEXT_SPEED, TEXT_FONT_FAMILY, TEXT_FONT_SIZE,
-        TEXT_COLOR_MODE, TEXT_SHAPE, TEXT_CONTAINER,
-        family: FAMILY
+        TEXT_FONT_SIZE, TEXT_COLOR_MODE, TEXT_SHAPE,
       },
       null,
       2
@@ -242,22 +227,19 @@ function speak(text) {
   } catch (_) {}
 }
 
-/* ==========================================================
-   ✅ TEXT: color + spawn (YOU control)
-========================================================== */
+/* ---------------------------
+   Text spawn
+--------------------------- */
 function pickTextColor() {
   if (TEXT_COLOR_MODE === "single") return TEXT_SINGLE_COLOR;
-  if (TEXT_COLOR_MODE === "palette") {
-    return TEXT_COLOR_PALETTE[(Math.random() * TEXT_COLOR_PALETTE.length) | 0];
-  }
+  if (TEXT_COLOR_MODE === "palette") return TEXT_COLOR_PALETTE[(Math.random() * TEXT_COLOR_PALETTE.length) | 0];
   return `hsl(${Math.random() * 360}, 85%, 70%)`;
 }
 
 function spawnTreeText(text) {
   const words = String(text).split(/\s+/).filter(Boolean);
-
-  const startU = 0.86;    // where it begins (lower = closer to base)
-  const spacing = 0.045;  // space between words
+  const startU = 0.86;
+  const spacing = 0.045;
 
   words.forEach((word, i) => {
     treeText.push({
@@ -274,9 +256,9 @@ function spawnTreeText(text) {
   if (treeText.length > 260) treeText.splice(0, treeText.length - 260);
 }
 
-/* ==========================================================
-   ✅ TEXT SHAPES: where each word goes
-========================================================== */
+/* ---------------------------
+   Shape positioning
+--------------------------- */
 function getTextPosition(u, cfg, now) {
   const { cx, topY, h, maxRadius, turns } = cfg;
 
@@ -287,38 +269,28 @@ function getTextPosition(u, cfg, now) {
       const a = u * turns * Math.PI + Math.sin(now / 1200) * 0.12;
       return { x: cx + Math.cos(a) * r, y };
     }
-
     case "circle": {
       const radius = W * TEXT_SHAPE_RADIUS;
       const a = u * Math.PI * 2;
       return { x: cx + Math.cos(a) * radius, y: H * 0.45 + Math.sin(a) * radius };
     }
-
     case "heart": {
       const t = u * Math.PI * 2;
       const r = W * TEXT_SHAPE_RADIUS;
       return {
         x: cx + r * 0.85 * Math.pow(Math.sin(t), 3),
-        y:
-          H * 0.42 -
-          r *
-            (0.28 * Math.cos(t) -
-             0.12 * Math.cos(2 * t) -
-             0.03 * Math.cos(3 * t))
+        y: H * 0.42 - r * (0.28 * Math.cos(t) - 0.12 * Math.cos(2 * t) - 0.03 * Math.cos(3 * t))
       };
     }
-
     case "wave": {
       return {
         x: W * 0.15 + u * W * 0.7,
         y: H * 0.55 + Math.sin(u * Math.PI * 4 + now / 900) * 24
       };
     }
-
     case "pillar": {
       return { x: cx, y: topY + u * h };
     }
-
     case "star": {
       const spikes = 5;
       const outer = W * TEXT_SHAPE_RADIUS;
@@ -328,20 +300,18 @@ function getTextPosition(u, cfg, now) {
       const r = (k % 2 === 0) ? outer : inner;
       return { x: cx + Math.cos(a) * r, y: H * 0.45 + Math.sin(a) * r };
     }
-
     default:
       return { x: cx, y: topY + u * h };
   }
 }
 
-/* ==========================================================
-   ✅ TEXT RENDER: gentle + ornaments (NO separate Step-2 function)
-========================================================== */
 function hslToHsla(hsl, a) {
-  // "hsl(H, S%, L%)" -> "hsla(H, S%, L%, a)"
   return String(hsl).replace(/^hsl\(/, "hsla(").replace(/\)\s*$/, `, ${a})`);
 }
 
+/* ---------------------------
+   Render text
+--------------------------- */
 function renderTreeText(now, dt, cfg) {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
@@ -354,19 +324,15 @@ function renderTreeText(now, dt, cfg) {
 
   for (const t of treeText) {
     t.u -= t.speed * dt;
-    t.life -= 0.00018 * dt;            // slower fade (gentler)
+    t.life -= 0.00018 * dt;
     t.alpha = Math.min(1, t.alpha + 0.010);
 
     const pos = getTextPosition(t.u, cfg, now);
-    const x = pos.x;
-    const y = pos.y;
-
     const a = clamp(t.alpha * t.life * brightness, 0, 1);
 
-    // perspective feel (tree looks natural); also works on other shapes
     const scale = clamp(1.10 - t.u * 0.55, 0.62, 1.12);
 
-    // measure text for container
+    // measure for container
     const metrics = ctx.measureText(t.word);
     const textW = metrics.width;
     const textH = TEXT_FONT_SIZE * 1.18;
@@ -375,17 +341,14 @@ function renderTreeText(now, dt, cfg) {
     const boxH = (textH + ORNAMENT_PADDING_Y * 2);
 
     ctx.save();
-    ctx.translate(x, y);
+    ctx.translate(pos.x, pos.y);
     ctx.scale(scale, scale);
 
-    /* --- ORNAMENT (ball/pill/badge) for clarity --- */
     if (TEXT_CONTAINER !== "none") {
       ctx.save();
       ctx.globalAlpha = a;
-
       ctx.shadowBlur = ORNAMENT_GLOW;
       ctx.shadowColor = ORNAMENT_BORDER_COLOR;
-
       ctx.fillStyle = ORNAMENT_BG_COLOR;
       ctx.strokeStyle = ORNAMENT_BORDER_COLOR;
       ctx.lineWidth = 1.5;
@@ -407,18 +370,15 @@ function renderTreeText(now, dt, cfg) {
         ctx.fill();
         ctx.stroke();
       }
-
       ctx.restore();
     }
 
-    /* --- TEXT --- */
     const fill = hslToHsla(t.color, a);
     ctx.fillStyle = fill;
     ctx.shadowColor = fill;
     ctx.shadowBlur = TEXT_GLOW_BLUR;
 
     ctx.fillText(t.word, 0, 0);
-
     ctx.restore();
   }
 
@@ -433,13 +393,8 @@ function nextMember() {
   const member = FAMILY[order[idx % order.length]];
   const line = pickAffirmation(member);
   setNow(member, line);
-
-  // ✅ Words on the tree
   spawnTreeText(line);
-
-  // Voice (optional)
   speak(`${member.name}. ${line.replace(member.name, "").replace("…", "").replace("—", "").trim()}`);
-
   idx++;
   if (idx % order.length === 0) makeOrder();
 }
@@ -540,7 +495,6 @@ function drawStar(cx, cy, r) {
 function renderGold(now, dt) {
   const cx = W * 0.5, baseY = H * 0.80, topY = H * 0.18;
 
-  // glow base
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const gg = ctx.createRadialGradient(cx, baseY, 10, cx, baseY, W * 0.45);
@@ -552,7 +506,6 @@ function renderGold(now, dt) {
   ctx.fill();
   ctx.restore();
 
-  // particles
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   for (const p of particles) {
@@ -570,7 +523,6 @@ function renderGold(now, dt) {
   }
   ctx.restore();
 
-  // subtle silhouette
   ctx.save();
   ctx.globalAlpha = 0.18;
   ctx.fillStyle = "rgba(0,0,0,0.6)";
@@ -582,16 +534,13 @@ function renderGold(now, dt) {
   ctx.fill();
   ctx.restore();
 
-  // ✅ words (shape-aware)
   renderTreeText(now, dt, { cx, topY: H * 0.18, h: H * 0.62, maxRadius: W * 0.22, turns: 8.0 });
-
   drawStar(cx, topY - 30, Math.min(W, H) * 0.035);
 }
 
 function renderLights(now, dt) {
   const cx = W * 0.5, baseY = H * 0.82, topY = H * 0.16;
 
-  // cone lines
   ctx.save();
   ctx.strokeStyle = `rgba(255,255,255,${0.08 * brightness})`;
   ctx.lineWidth = 2;
@@ -603,7 +552,6 @@ function renderLights(now, dt) {
   ctx.stroke();
   ctx.restore();
 
-  // lights
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   for (const L of lights) {
@@ -623,7 +571,6 @@ function renderLights(now, dt) {
   }
   ctx.restore();
 
-  // trunk
   ctx.save();
   ctx.fillStyle = `rgba(130,90,50,${0.85 * brightness})`;
   const tw = W * 0.03, th = H * 0.09;
@@ -632,9 +579,7 @@ function renderLights(now, dt) {
   ctx.fill();
   ctx.restore();
 
-  // ✅ words (shape-aware)
   renderTreeText(now, dt, { cx, topY: H * 0.16, h: H * 0.66, maxRadius: W * 0.25, turns: 6.2 });
-
   drawStar(cx, topY - 22, Math.min(W, H) * 0.04);
 }
 
@@ -657,6 +602,11 @@ function syncButtons() {
   ui.treeStyle.value = treeMode;
   ui.speed.value = speedKey;
   ui.brightness.value = String(brightness);
+
+  // sync NEW UI controls
+  if (ui.fontSize) ui.fontSize.value = String(TEXT_FONT_SIZE);
+  if (ui.colorMode) ui.colorMode.value = String(TEXT_COLOR_MODE);
+  if (ui.textShape) ui.textShape.value = String(TEXT_SHAPE);
 
   if (ui.btnCinematic) {
     ui.btnCinematic.textContent = `🎬 Cinematic: ${cinematic ? "On" : "Off"}`;
@@ -698,11 +648,10 @@ ui.treeStyle.addEventListener("change", () => {
   syncButtons();
 });
 
-/* ✅ OPTIONAL: let Speed dropdown also tune text scroll speed */
 ui.speed.addEventListener("change", () => {
   speedKey = ui.speed.value;
 
-  // You can change these 3 numbers to your taste:
+  // keep your old mapping if you like
   if (speedKey === "slow")   TEXT_SPEED = 0.000035;
   if (speedKey === "normal") TEXT_SPEED = 0.000045;
   if (speedKey === "fast")   TEXT_SPEED = 0.000070;
@@ -712,6 +661,21 @@ ui.speed.addEventListener("change", () => {
 
 ui.brightness.addEventListener("input", () => {
   brightness = Number(ui.brightness.value);
+});
+
+/* ✅ NEW: Font size slider */
+ui.fontSize?.addEventListener("input", () => {
+  TEXT_FONT_SIZE = Number(ui.fontSize.value);
+});
+
+/* ✅ NEW: Color mode toggle */
+ui.colorMode?.addEventListener("change", () => {
+  TEXT_COLOR_MODE = ui.colorMode.value;
+});
+
+/* ✅ NEW: Text shape dropdown */
+ui.textShape?.addEventListener("change", () => {
+  TEXT_SHAPE = ui.textShape.value;
 });
 
 function toggleCinematic() {
