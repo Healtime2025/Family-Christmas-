@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0b0b" />
+  <title>Mirror OS • Family Christmas Tree</title>
+
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <canvas id="tree" aria-hidden="true"></canvas>
+
+  <main class="ui" role="application">
+    <header class="top">
+      <div class="brand">
+        <div class="badge">🎄</div>
+        <div class="titles">
+          <div class="kicker">Mirror OS</div>
+          <h1>Family Christmas Tree</h1>
+        </div>
+      </div>
+
+      <div class="now">
+        <div class="name" id="currentName">Family</div>
+        <div class="line" id="currentLine">Love lives here.</div>
+      </div>
+    </header>
+
+    <section class="card">
+      <div class="row">
+        <button class="btn primary" id="btnPlay" aria-pressed="true">⏸ Pause</button>
+        <button class="btn" id="btnNext">⏭ Next</button>
+        <button class="btn" id="btnShuffle">🔀 Shuffle: On</button>
+        <button class="btn" id="btnVoice">🔊 Voice: Off</button>
+      </div>
+
+      <div class="row">
+        <label class="field">
+          <span>Tree style</span>
+          <select id="treeStyle">
+            <option value="gold">Golden Spiral</option>
+            <option value="lights">String Lights Cone</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Speed</span>
+          <select id="speed">
+            <option value="slow">Slow</option>
+            <option value="normal" selected>Normal</option>
+            <option value="fast">Fast</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Brightness</span>
+          <input id="brightness" type="range" min="0.6" max="1.6" step="0.05" value="1.0" />
+        </label>
+      </div>
+
+      <details class="edit">
+        <summary>Edit family & words</summary>
+        <p class="hint">
+          Open <code>app.js</code> to fully customize names, traits, and themes.
+          This panel shows what’s loaded right now.
+        </p>
+        <pre id="configPreview" class="preview" aria-label="Current configuration"></pre>
+      </details>
+    </section>
+
+    <footer class="foot">
+      <div class="tiny">Offline-ready • Works on phone/TV • Built for love</div>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

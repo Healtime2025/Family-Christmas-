@@ -1,0 +1,202 @@
+/* Mirror OS • Family Christmas Tree */
+:root{
+  --bg:#0b0b0b;
+  --card: rgba(20, 20, 28, .72);
+  --stroke: rgba(255,255,255,.10);
+  --text: rgba(255,255,255,.92);
+  --muted: rgba(255,255,255,.66);
+  --accent: #f7c66b;
+  --accent2:#78d7ff;
+  --shadow: 0 18px 50px rgba(0,0,0,.45);
+  --radius: 18px;
+  --pad: 16px;
+  --max: 980px;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+}
+
+*{ box-sizing: border-box; }
+html,body{ height:100%; }
+body{
+  margin:0;
+  background: radial-gradient(1200px 800px at 50% 20%, rgba(80,80,120,.18), transparent 55%), var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  overflow:hidden;
+}
+
+#tree{
+  position:fixed;
+  inset:0;
+  width:100%;
+  height:100%;
+  display:block;
+}
+
+.ui{
+  position:relative;
+  z-index:2;
+  min-height:100%;
+  display:flex;
+  flex-direction:column;
+  padding: 20px 16px 18px;
+  gap: 14px;
+  max-width: var(--max);
+  margin: 0 auto;
+}
+
+.top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 14px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap: 12px;
+}
+
+.badge{
+  width:44px; height:44px;
+  border-radius: 14px;
+  display:grid; place-items:center;
+  background: linear-gradient(135deg, rgba(247,198,107,.20), rgba(120,215,255,.16));
+  border: 1px solid var(--stroke);
+  box-shadow: var(--shadow);
+}
+
+.titles .kicker{
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.titles h1{
+  margin:2px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.now{
+  text-align:right;
+  flex: 1;
+  max-width: 56%;
+}
+
+.name{
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.line{
+  margin-top:6px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.card{
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: var(--pad);
+  backdrop-filter: blur(10px);
+}
+
+.row{
+  display:flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items:center;
+}
+
+.btn{
+  appearance:none;
+  border: 1px solid var(--stroke);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  padding: 10px 12px;
+  border-radius: 14px;
+  cursor:pointer;
+  font-weight: 650;
+  transition: transform .08s ease, background .15s ease, border-color .15s ease;
+  user-select:none;
+}
+.btn:hover{ background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.18); }
+.btn:active{ transform: scale(.98); }
+
+.btn.primary{
+  background: linear-gradient(135deg, rgba(247,198,107,.22), rgba(120,215,255,.12));
+  border-color: rgba(247,198,107,.22);
+}
+
+.field{
+  display:flex;
+  flex-direction:column;
+  gap: 6px;
+  min-width: 160px;
+  flex: 1;
+}
+.field span{
+  font-size: 12px;
+  color: var(--muted);
+}
+.field select, .field input[type="range"]{
+  width:100%;
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: rgba(0,0,0,.22);
+  color: var(--text);
+  padding: 10px 12px;
+  outline:none;
+}
+.field input[type="range"]{
+  padding: 12px;
+}
+
+.edit{
+  margin-top: 10px;
+}
+.edit summary{
+  cursor:pointer;
+  color: var(--accent2);
+  font-weight: 700;
+}
+.hint{
+  margin: 10px 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.preview{
+  margin:0;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid var(--stroke);
+  background: rgba(0,0,0,.26);
+  max-height: 240px;
+  overflow:auto;
+  font-size: 12px;
+  color: rgba(255,255,255,.84);
+}
+
+.foot{
+  margin-top:auto;
+  opacity:.9;
+}
+.tiny{
+  font-size: 12px;
+  color: var(--muted);
+  text-align:center;
+  padding-bottom: 4px;
+}
+
+@media (max-width: 560px){
+  .top{ flex-direction:column; }
+  .now{ text-align:left; max-width: 100%; }
+  .name{ font-size: 22px; }
+}
