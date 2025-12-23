@@ -1,8 +1,8 @@
-/* Mirror OS • Family Christmas Tree (v2)
+/* Mirror OS • Family Christmas Tree (v2) — Gentler scrolling & colors
    - Animated tree (2 styles)
    - Rotating family names + affirmations
    - Pause/Play, Next, Shuffle, Speed, Brightness
-   - ✅ Words scroll ON the tree (canvas)
+   - ✅ Words scroll ON the tree (canvas) — slower + multi-color
    - ✅ Cinematic mode (hide UI) + shortcut: C
    - Optional voice (Web Speech API)
    - Offline (service worker)
@@ -12,26 +12,11 @@
 */
 
 const FAMILY = [
-  {
-    name: "Dad",
-    traits: ["visionary", "strong", "full of love", "protector", "builder of dreams"],
-  },
-  {
-    name: "Mom",
-    traits: ["gentle", "wise", "full of grace", "caring", "holds the home together"],
-  },
-  {
-    name: "Daughter (18)",
-    traits: ["bright future", "creative", "confident", "kind heart", "leader in the making"],
-  },
-  {
-    name: "Son (10)",
-    traits: ["curious", "brave", "smart", "funny", "likes Spider-Man"],
-  },
-  {
-    name: "Son (7)",
-    traits: ["playful", "loving", "imaginative", "joyful", "likes Spider-Man"],
-  },
+  { name: "Dad", traits: ["visionary", "strong", "full of love", "protector", "builder of dreams"] },
+  { name: "Mom", traits: ["gentle", "wise", "full of grace", "caring", "holds the home together"] },
+  { name: "Daughter (18)", traits: ["bright future", "creative", "confident", "kind heart", "leader in the making"] },
+  { name: "Son (10)", traits: ["curious", "brave", "smart", "funny", "likes Spider-Man"] },
+  { name: "Son (7)", traits: ["playful", "loving", "imaginative", "joyful", "likes Spider-Man"] },
 ];
 
 const EXTRA_TRAITS = [
@@ -54,16 +39,10 @@ const PHRASE_TEMPLATES = [
   (name, picks) => `${name} — ${picks.join(" • ")}.`,
   (name, picks) => `We celebrate ${name}: ${picks.join(", ")}.`,
   (name, picks) =>
-    `${name}: ${picks[0]}. ${picks[1] ? picks[1] + "." : ""} ${
-      picks[2] ? picks[2] + "." : ""
-    }`.trim(),
+    `${name}: ${picks[0]}. ${picks[1] ? picks[1] + "." : ""} ${picks[2] ? picks[2] + "." : ""}`.trim(),
 ];
 
-const SPEEDS = {
-  slow: 5200,
-  normal: 3600,
-  fast: 2400,
-};
+const SPEEDS = { slow: 5200, normal: 3600, fast: 2400 };
 
 const el = (id) => document.getElementById(id);
 const canvas = el("tree");
@@ -83,9 +62,7 @@ const ui = {
   configPreview: el("configPreview"),
 };
 
-let W = 0,
-  H = 0,
-  DPR = 1;
+let W = 0, H = 0, DPR = 1;
 
 function resize() {
   DPR = Math.min(2, window.devicePixelRatio || 1);
@@ -135,9 +112,7 @@ function shuffle(arr) {
 function pickAffirmation(member) {
   const base = [...member.traits];
   const addN = Math.random() < 0.65 ? 1 : 2;
-  for (let i = 0; i < addN; i++) {
-    base.push(EXTRA_TRAITS[(Math.random() * EXTRA_TRAITS.length) | 0]);
-  }
+  for (let i = 0; i < addN; i++) base.push(EXTRA_TRAITS[(Math.random() * EXTRA_TRAITS.length) | 0]);
   const uniq = [...new Set(base)];
   shuffle(uniq);
   const count = 3 + ((Math.random() * 2) | 0);
@@ -149,11 +124,13 @@ function pickAffirmation(member) {
 function setNow(member, line) {
   ui.currentName.textContent = member.name;
   ui.currentLine.textContent = line;
-  ui.configPreview.textContent = JSON.stringify(
-    { treeMode, shuffleOn, voiceOn, cinematic, speed: speedKey, brightness, family: FAMILY },
-    null,
-    2
-  );
+  if (ui.configPreview) {
+    ui.configPreview.textContent = JSON.stringify(
+      { treeMode, shuffleOn, voiceOn, cinematic, speed: speedKey, brightness, family: FAMILY },
+      null,
+      2
+    );
+  }
 }
 
 function speak(text) {
@@ -166,33 +143,85 @@ function speak(text) {
     u.rate = 0.95;
     u.pitch = 1.0;
     u.volume = 1.0;
-    u.onend = () => {
-      if (token !== speakToken) return;
-    };
+    u.onend = () => { if (token !== speakToken) return; };
     window.speechSynthesis.speak(u);
   } catch (_) {}
 }
 
-/* ✅ Spawn words at the base, rising up the tree */
+/* ==========================================================
+   ✅ UPDATED: Gentler scrolling + different colors (your snippet)
+========================================================== */
+
+// Slow down the text speed a bit and add color variation
 function spawnTreeText(text) {
   const words = String(text).split(/\s+/).filter(Boolean);
+  const startU = 0.85; // start lower on the tree
+  const spacing = 0.04; // slightly more spacing
 
-  const startU = 0.92;  // bottom
-  const spacing = 0.045;
-
-  for (let i = 0; i < words.length; i++) {
+  words.forEach((word, i) => {
     treeText.push({
-      word: words[i],
+      word,
       u: startU + i * spacing,
-      life: 1.0,
-      alpha: 0.0,
-      speed: 0.00014 + Math.random() * 0.00009,
-      wobble: Math.random() * Math.PI * 2,
+      life: 1,
+      alpha: 0,
+      speed: 0.0001 + Math.random() * 0.00005, // slower speed
+      color: `hsl(${Math.random() * 360}, 90%, 70%)`, // random pastel color
     });
-  }
-  if (treeText.length > 240) treeText.splice(0, treeText.length - 240);
+  });
+
+  // cap
+  if (treeText.length > 260) treeText.splice(0, treeText.length - 260);
 }
 
+function renderTreeText(now, dt, cfg) {
+  const { cx, topY, h, maxRadius, turns } = cfg;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  const fontPx = Math.max(14, Math.min(20, W * 0.018));
+  ctx.font = `700 ${fontPx}px system-ui, Inter`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  treeText = treeText.filter((t) => t.life > 0);
+
+  for (const t of treeText) {
+    t.u -= t.speed * dt;
+    t.life -= 0.0002 * dt; // slower fade
+    t.alpha = Math.min(1, t.alpha + 0.01);
+
+    const y = topY + t.u * h;
+    const radius = (t.u ** 1.12) * maxRadius;
+    const angle = t.u * turns * Math.PI + Math.sin(now / 1200) * 0.1;
+    const x = cx + Math.cos(angle) * radius;
+
+    // apply alpha to HSL color (simple + stable)
+    ctx.fillStyle = `hsla(${(Math.random()*0 + 0) /*placeholder*/}, 0%, 0%, 1)`;
+    // replace above with correct alpha application:
+    const a = Math.max(0, Math.min(1, t.alpha * t.life * brightness));
+    // parse hsl(...) -> hsla(...)
+    // t.color is "hsl(H, S%, L%)"
+    const hsla = t.color.replace(/^hsl\(/, "hsla(").replace(/\)$/, `, ${a})`);
+    ctx.fillStyle = hsla;
+
+    ctx.shadowColor = "rgba(247,198,107,0.8)";
+    ctx.shadowBlur = 18;
+
+    // slight perspective: smaller near top
+    const scale = clamp(1.10 - t.u * 0.55, 0.62, 1.1);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.fillText(t.word, 0, 0);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/* ---------------------------
+   Member cycle
+--------------------------- */
 function nextMember() {
   if (order.length !== FAMILY.length) makeOrder();
   const member = FAMILY[order[idx % order.length]];
@@ -204,11 +233,7 @@ function nextMember() {
 
   // Voice (optional)
   speak(
-    `${member.name}. ${line
-      .replace(member.name, "")
-      .replace("…", "")
-      .replace("—", "")
-      .trim()}`
+    `${member.name}. ${line.replace(member.name, "").replace("…", "").replace("—", "").trim()}`
   );
 
   idx++;
@@ -223,7 +248,6 @@ function lerp(a, b, t) { return a + (b - a) * t; }
 
 const GOLD = { r: 247, g: 198, b: 107 };
 const CYAN = { r: 120, g: 215, b: 255 };
-
 function rgba(c, a) { return `rgba(${c.r},${c.g},${c.b},${a})`; }
 
 let t0 = performance.now();
@@ -309,53 +333,6 @@ function drawStar(cx, cy, r) {
   ctx.restore();
 }
 
-/* ✅ Text layer that follows the tree cone/spiral */
-function renderTreeText(now, dt, cfg) {
-  const { cx, topY, h, maxRadius, turns, colorMode } = cfg;
-
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-
-  const fontPx = Math.max(14, Math.min(20, W * 0.018));
-  ctx.font = `700 ${fontPx}px system-ui, Inter`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-
-  treeText = treeText.filter(t => t.life > 0);
-
-  for (const t of treeText) {
-    t.u -= t.speed * dt;
-    t.life -= 0.00022 * dt;
-    t.alpha = Math.min(1, t.alpha + 0.02);
-
-    const u = t.u;
-    const y = topY + u * h;
-
-    const radius = (u ** 1.12) * maxRadius;
-    const angle = u * turns * Math.PI + Math.sin(now / 1200 + t.wobble) * 0.12;
-    const x = cx + Math.cos(angle) * radius;
-
-    let fill = `rgba(247,198,107,${t.alpha * t.life * brightness})`;
-    if (colorMode === "rainbow") {
-      const hue = (now / 50 + u * 360) % 360;
-      fill = `hsla(${hue}, 95%, 62%, ${t.alpha * t.life * brightness})`;
-    }
-
-    ctx.fillStyle = fill;
-    ctx.shadowColor = "rgba(247,198,107,0.9)";
-    ctx.shadowBlur = 18;
-
-    const scale = clamp(1.10 - u * 0.55, 0.62, 1.1);
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(scale, scale);
-    ctx.fillText(t.word, 0, 0);
-    ctx.restore();
-  }
-
-  ctx.restore();
-}
-
 function renderGold(now, dt) {
   const cx = W * 0.5, baseY = H * 0.80, topY = H * 0.18;
 
@@ -378,7 +355,6 @@ function renderGold(now, dt) {
     const drift = Math.sin(now / 1200 + p.ang) * (1.2 + p.u * 2.2) + p.drift * 30;
     const x = p.baseX + drift;
     const y = p.baseY + Math.cos(now / 1800 + p.u * 6) * 0.7;
-
     const a = (0.05 + twk * 0.25) * brightness;
     ctx.fillStyle = `rgba(247,198,107,${a})`;
     ctx.beginPath();
@@ -398,8 +374,8 @@ function renderGold(now, dt) {
   ctx.fill();
   ctx.restore();
 
-  // ✅ Words on tree
-  renderTreeText(now, dt, { cx, topY: H * 0.18, h: H * 0.62, maxRadius: W * 0.22, turns: 8.0, colorMode: "gold" });
+  // ✅ words on tree
+  renderTreeText(now, dt, { cx, topY: H * 0.18, h: H * 0.62, maxRadius: W * 0.22, turns: 8.0 });
 
   drawStar(cx, topY - 30, Math.min(W, H) * 0.035);
 }
@@ -429,7 +405,6 @@ function renderLights(now, dt) {
     ctx.beginPath();
     ctx.arc(L.x, L.y, r, 0, Math.PI * 2);
     ctx.fill();
-
     ctx.fillStyle = `hsla(${hue}, 95%, 62%, ${(0.02 + 0.10 * twk) * brightness})`;
     ctx.beginPath();
     ctx.arc(L.x, L.y, r * 4.2, 0, Math.PI * 2);
@@ -444,8 +419,8 @@ function renderLights(now, dt) {
   ctx.fill();
   ctx.restore();
 
-  // ✅ Words on tree (rainbow is festive here)
-  renderTreeText(now, dt, { cx, topY: H * 0.16, h: H * 0.66, maxRadius: W * 0.25, turns: 6.2, colorMode: "rainbow" });
+  // ✅ words on tree
+  renderTreeText(now, dt, { cx, topY: H * 0.16, h: H * 0.66, maxRadius: W * 0.25, turns: 6.2 });
 
   drawStar(cx, topY - 22, Math.min(W, H) * 0.04);
 }
@@ -474,17 +449,13 @@ function syncButtons() {
     ui.btnCinematic.textContent = `🎬 Cinematic: ${cinematic ? "On" : "Off"}`;
     ui.btnCinematic.setAttribute("aria-pressed", String(cinematic));
   }
-
   document.body.classList.toggle("cinematic", cinematic);
 }
 
 ui.btnPlay.addEventListener("click", () => {
   playing = !playing;
-  if (!playing) {
-    try { window.speechSynthesis?.cancel(); } catch(_) {}
-  } else {
-    lastSwitch = performance.now();
-  }
+  if (!playing) { try { window.speechSynthesis?.cancel(); } catch(_) {} }
+  else { lastSwitch = performance.now(); }
   syncButtons();
 });
 
@@ -502,11 +473,8 @@ ui.btnShuffle.addEventListener("click", () => {
 
 ui.btnVoice.addEventListener("click", () => {
   voiceOn = !voiceOn;
-  if (!voiceOn) {
-    try { window.speechSynthesis?.cancel(); } catch(_) {}
-  } else {
-    speak(`${ui.currentName.textContent}. ${ui.currentLine.textContent}`);
-  }
+  if (!voiceOn) { try { window.speechSynthesis?.cancel(); } catch(_) {} }
+  else { speak(`${ui.currentName.textContent}. ${ui.currentLine.textContent}`); }
   syncButtons();
 });
 
