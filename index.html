@@ -52,8 +52,9 @@
           </select>
         </label>
 
+        <!-- ✅ Name switching speed (kept) -->
         <label class="field">
-          <span>Speed</span>
+          <span>Switch speed</span>
           <select id="speed">
             <option value="slow">Slow</option>
             <option value="normal" selected>Normal</option>
@@ -67,8 +68,14 @@
         </label>
       </div>
 
-      <!-- ✅ Controls row 2 (NEW) -->
+      <!-- ✅ Controls row 2 (TEXT + LOOK) -->
       <div class="row">
+        <!-- 🎚 Text scroll speed (0 → max) -->
+        <label class="field">
+          <span>Text flow speed</span>
+          <input id="textSpeed" type="range" min="0" max="100" step="1" value="45" />
+        </label>
+
         <!-- 🎨 Font size slider -->
         <label class="field">
           <span>Font size</span>
@@ -84,7 +91,10 @@
             <option value="random">Random</option>
           </select>
         </label>
+      </div>
 
+      <!-- ✅ Controls row 3 (SHAPE) -->
+      <div class="row">
         <!-- 🔺 Shape dropdown -->
         <label class="field">
           <span>Text shape</span>
@@ -95,6 +105,17 @@
             <option value="wave">Wave</option>
             <option value="pillar">Pillar</option>
             <option value="star">Star</option>
+          </select>
+        </label>
+
+        <!-- Optional: container style (if your JS supports it) -->
+        <label class="field">
+          <span>Text container</span>
+          <select id="textContainer">
+            <option value="ball" selected>Ball</option>
+            <option value="pill">Pill</option>
+            <option value="badge">Badge</option>
+            <option value="none">None</option>
           </select>
         </label>
       </div>
