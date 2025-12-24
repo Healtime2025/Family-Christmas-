@@ -6,13 +6,17 @@
   <meta name="theme-color" content="#0b0b0b" />
   <title>Mirror OS • Family Christmas Tree</title>
   <link rel="manifest" href="./manifest.json" />
-  <link rel="stylesheet" href="./style.css" />
+  <!-- ✅ your repo file is styles.css (not style.css) -->
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
   <canvas id="tree"></canvas>
 
-  <!-- ✅ Option B: audio element (required) -->
+  <!-- ✅ Option B: carols -->
   <audio id="carol" preload="auto"></audio>
+
+  <!-- ✅ GPT Voice playback (keeps one audio element for clean control) -->
+  <audio id="tts" preload="none"></audio>
 
   <div class="ui">
     <div class="top">
@@ -37,10 +41,35 @@
         <button class="btn" id="btnShuffle">🔀 Shuffle: On</button>
         <button class="btn" id="btnVoice">🔊 Voice: Off</button>
 
-        <!-- ✅ Option B: Music toggle -->
+        <!-- ✅ Music toggle -->
         <button class="btn" id="btnMusic">🎵 Music: Off</button>
 
         <button class="btn" id="btnCinematic">🎬 Cinematic: Off</button>
+      </div>
+
+      <!-- ✅ NEW: Voice controls (GPT vs Browser + voice choice + test) -->
+      <div class="row" style="margin-top:12px">
+        <label class="field">
+          <span>Voice engine</span>
+          <select id="voiceEngine">
+            <option value="gpt" selected>GPT Voice (OpenAI)</option>
+            <option value="browser">Browser Voice (offline)</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>GPT voice</span>
+          <select id="voiceSelect">
+            <option value="alloy" selected>Alloy</option>
+            <option value="marin">Marin</option>
+            <option value="cedar">Cedar</option>
+            <option value="ember">Ember</option>
+          </select>
+        </label>
+
+        <button class="btn" id="btnTestVoice" title="Plays a short sample">
+          🎙️ Test
+        </button>
       </div>
 
       <div class="row" style="margin-top:12px">
@@ -121,13 +150,21 @@
 
     <div class="foot">
       <div class="tiny">
-        Tip: Click the canvas or press ESC for full-screen tree • Press C to toggle UI •
+        Tip: (Always-on mode) UI doesn’t hide and cinematic is disabled •
         <strong>Music:</strong> click 🎵 • <strong>Next song:</strong> Shift+N
       </div>
     </div>
   </div>
 
-  <!-- ✅ MUST be module so app.js can import from family.js -->
   <script type="module" src="./app.js"></script>
+
+  <!-- ✅ Tiny glue: voice test button triggers your app.js speak() via click unlock -->
+  <script type="module">
+    // This just sends a custom event that app.js can listen for safely
+    const btn = document.getElementById("btnTestVoice");
+    btn?.addEventListener("click", () => {
+      window.dispatchEvent(new CustomEvent("mirror:test-voice"));
+    });
+  </script>
 </body>
 </html>
