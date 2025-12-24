@@ -1016,6 +1016,16 @@ function resetUiIdleTimer() {
 function noteUiActivity() {
   /* no-op */
 }
+// ✅ Voice test button (index.html dispatches this event)
+window.addEventListener("mirror:test-voice", () => {
+  // Event comes from a click -> user gesture -> unlock audio
+  ttsUnlocked = true;
+  voiceOn = true;
+  syncButtons();
+
+  speak("Merry Christmas! Mirror OS family tree voice test.", { interrupt: true });
+});
+
 
 /* ===============================
    UI
