@@ -75,7 +75,7 @@ const FLOW = {
    - Plays returned MP3
 ================================= */
 let VOICE_ENGINE = "gpt"; // "gpt" | "browser"
-let GPT_VOICE = "alloy";  // alloy | marin | cedar | ember ...
+let GPT_VOICE = "alloy"; // alloy | marin | cedar | ember ...
 let GPT_TTS_ENDPOINT = "/api/tts";
 
 // Browser voice fallback tuning
@@ -88,18 +88,18 @@ let ttsUnlocked = false;
 let speakToken = 0;
 let ttsAbort = null;
 
-// ✅ Use the <audio id="tts"> element if it exists (more stable + debuggable)
-const ttsAudioEl = document.getElementById("tts");
-const ttsAudio =
-  ttsAudioEl && ttsAudioEl instanceof HTMLAudioElement ? ttsAudioEl : new Audio();
-ttsAudio.preload = "none";
-
 /* ---------------------------
    DOM / Canvas
 --------------------------- */
 const el = (id) => document.getElementById(id);
 const canvas = el("tree");
 const ctx = canvas.getContext("2d", { alpha: true });
+
+/* ✅ Use the <audio id="tts"> element if it exists (more stable + debuggable) */
+const ttsAudioEl = el("tts");
+const ttsAudio =
+  ttsAudioEl && ttsAudioEl instanceof HTMLAudioElement ? ttsAudioEl : new Audio();
+ttsAudio.preload = "none";
 
 const ui = {
   currentName: el("currentName"),
@@ -126,9 +126,9 @@ const ui = {
   textShape: el("textShape"),
   textContainer: el("textContainer"),
 
-  // OPTIONAL (if you add in HTML later; code won’t break if absent)
-  voiceEngine: el("voiceEngine"),   // <select id="voiceEngine"><option value="gpt">GPT</option><option value="browser">Browser</option></select>
-  voiceSelect: el("voiceSelect"),   // <select id="voiceSelect">...</select>
+  // Optional voice controls
+  voiceEngine: el("voiceEngine"),
+  voiceSelect: el("voiceSelect"),
 
   configPreview: el("configPreview"),
 };
@@ -358,7 +358,7 @@ function setNow(member, line) {
         container: TEXT_CONTAINER,
         carolOn,
         carolIndex,
-        ttsUnlocked
+        ttsUnlocked,
       },
       null,
       2
@@ -389,7 +389,6 @@ function stopVoicePlayback() {
 }
 
 function speakTextForMember(memberName, line) {
-  // Speak: "Name. affirmation..." (cleaned)
   const cleaned = `${memberName}. ${String(line || "")
     .replace(memberName, "")
     .replace("…", "")
@@ -402,16 +401,12 @@ function speakTextForMember(memberName, line) {
 async function speak(text, { interrupt = true } = {}) {
   if (!voiceOn) return;
   if (!text) return;
-
-  // If we’re paused, do not talk.
   if (!playing) return;
 
-  // Interrupt previous voice immediately (best UX for "Next" / auto switch)
   if (interrupt) {
     speakToken++;
     stopVoicePlayback();
   } else {
-    // still isolate with token bump
     speakToken++;
   }
 
@@ -420,24 +415,23 @@ async function speak(text, { interrupt = true } = {}) {
   // Duck music a bit while speaking
   if (carolOn && carol) fadeTo(0.12, 180);
 
-  // Prefer GPT engine if selected and endpoint available
+  // Prefer GPT engine if selected
   if (VOICE_ENGINE === "gpt") {
     const ok = await speakViaGPT(text, token);
-    if (ok) return; // done
+    if (ok) return;
   }
 
-  // Fallback to browser TTS
   speakViaBrowser(text, token);
 }
 
 async function speakViaGPT(text, token) {
-  // Need unlock for audio play stability (first interaction)
   if (!ttsUnlocked) return false;
 
   try {
-    // Abort any previous request
     if (ttsAbort) {
-      try { ttsAbort.abort(); } catch (_) {}
+      try {
+        ttsAbort.abort();
+      } catch (_) {}
     }
     ttsAbort = new AbortController();
 
@@ -449,14 +443,13 @@ async function speakViaGPT(text, token) {
     });
 
     if (!res.ok) return false;
-    if (token !== speakToken) return true; // newer speak happened; treat as handled
+    if (token !== speakToken) return true;
 
     const blob = await res.blob();
     if (token !== speakToken) return true;
 
     const url = URL.createObjectURL(blob);
 
-    // Stop any previous audio cleanly
     try {
       ttsAudio.pause();
       ttsAudio.src = "";
@@ -464,17 +457,16 @@ async function speakViaGPT(text, token) {
 
     ttsAudio.src = url;
 
-    // Play
     const p = ttsAudio.play();
     if (p && typeof p.then === "function") {
       await p.catch(() => {
-        // Autoplay blocked or other error -> fallback
-        try { URL.revokeObjectURL(url); } catch (_) {}
+        try {
+          URL.revokeObjectURL(url);
+        } catch (_) {}
         throw new Error("audio_play_failed");
       });
     }
 
-    // Wait until end OR interrupted
     await new Promise((resolve) => {
       const onEnd = () => cleanup(true);
       const onError = () => cleanup(false);
@@ -483,22 +475,25 @@ async function speakViaGPT(text, token) {
         ttsAudio.removeEventListener("ended", onEnd);
         ttsAudio.removeEventListener("error", onError);
 
-        // Only restore music if still current token
         if (token === speakToken) {
           if (carolOn && carol) fadeTo(CAROL.volume, 300);
         }
 
-        // release blob url
-        try { URL.revokeObjectURL(url); } catch (_) {}
+        try {
+          URL.revokeObjectURL(url);
+        } catch (_) {}
 
         resolve(endedOk);
       };
 
-      // If interrupted, resolve quickly
       const checkInterrupt = () => {
         if (token !== speakToken) {
-          try { ttsAudio.pause(); } catch (_) {}
-          try { URL.revokeObjectURL(url); } catch (_) {}
+          try {
+            ttsAudio.pause();
+          } catch (_) {}
+          try {
+            URL.revokeObjectURL(url);
+          } catch (_) {}
           resolve(true);
           return;
         }
@@ -512,7 +507,6 @@ async function speakViaGPT(text, token) {
 
     return true;
   } catch (_) {
-    // restore music if GPT failed (don’t leave it ducked)
     if (token === speakToken) {
       if (carolOn && carol) fadeTo(CAROL.volume, 250);
     }
@@ -526,7 +520,6 @@ function speakViaBrowser(text, token) {
   if (!("speechSynthesis" in window)) return;
 
   try {
-    // Cancel any existing speech
     window.speechSynthesis.cancel();
 
     const u = new SpeechSynthesisUtterance(text);
@@ -558,9 +551,7 @@ function speakViaBrowser(text, token) {
 function pickTextColor() {
   if (TEXT_COLOR_MODE === "single") return TEXT_SINGLE_COLOR;
   if (TEXT_COLOR_MODE === "palette")
-    return TEXT_COLOR_PALETTE[
-      (Math.random() * TEXT_COLOR_PALETTE.length) | 0
-    ];
+    return TEXT_COLOR_PALETTE[(Math.random() * TEXT_COLOR_PALETTE.length) | 0];
   return `hsl(${Math.random() * 360}, 90%, 78%)`;
 }
 
@@ -641,9 +632,7 @@ function getTextPosition(u, cfg, now) {
 }
 
 function hslToHsla(hsl, a) {
-  return String(hsl)
-    .replace(/^hsl\(/, "hsla(")
-    .replace(/\)\s*$/, `, ${a})`);
+  return String(hsl).replace(/^hsl\(/, "hsla(").replace(/\)\s*$/, `, ${a})`);
 }
 
 /* ---------------------------
@@ -760,8 +749,6 @@ function nextMember() {
 
   setNow(member, line);
   spawnTreeText(line);
-
-  // ✅ voice (GPT preferred; browser fallback)
   speakTextForMember(member.name, line);
 
   idx++;
@@ -855,10 +842,8 @@ function drawBackground(now) {
   const n = 18;
   for (let i = 0; i < n; i++) {
     const a = now / 2200 + i * 0.77;
-    const x =
-      W * (0.15 + 0.7 * (Math.sin(a * 0.9 + i) * 0.5 + 0.5));
-    const y =
-      H * (0.08 + 0.35 * (Math.cos(a * 0.7 + i * 2.1) * 0.5 + 0.5));
+    const x = W * (0.15 + 0.7 * (Math.sin(a * 0.9 + i) * 0.5 + 0.5));
+    const y = H * (0.08 + 0.35 * (Math.cos(a * 0.7 + i * 2.1) * 0.5 + 0.5));
     const r = 8 + (Math.sin(a + i) * 0.5 + 0.5) * 18;
     ctx.beginPath();
     ctx.fillStyle = `rgba(247,198,107,${0.035 * brightness})`;
@@ -1007,25 +992,11 @@ function draw(now) {
    ✅ ALWAYS ON — NO CINEMATIC / NO AUTO-HIDE
 ================================= */
 function setCinematic(_) {
-  cinematic = false; // locked off
+  cinematic = false;
   syncButtons();
 }
-function resetUiIdleTimer() {
-  /* no-op */
-}
-function noteUiActivity() {
-  /* no-op */
-}
-// ✅ Voice test button (index.html dispatches this event)
-window.addEventListener("mirror:test-voice", () => {
-  // Event comes from a click -> user gesture -> unlock audio
-  ttsUnlocked = true;
-  voiceOn = true;
-  syncButtons();
-
-  speak("Merry Christmas! Mirror OS family tree voice test.", { interrupt: true });
-});
-
+function resetUiIdleTimer() {}
+function noteUiActivity() {}
 
 /* ===============================
    UI
@@ -1050,11 +1021,9 @@ function syncButtons() {
   if (ui.textShape) ui.textShape.value = String(TEXT_SHAPE);
   if (ui.textContainer) ui.textContainer.value = String(TEXT_CONTAINER);
 
-  // Optional voice controls if present
   if (ui.voiceEngine) ui.voiceEngine.value = VOICE_ENGINE;
   if (ui.voiceSelect) ui.voiceSelect.value = GPT_VOICE;
 
-  // Cinematic button stays OFF (and doesn’t toggle)
   if (ui.btnCinematic) {
     ui.btnCinematic.textContent = "🎬 Cinematic: Off";
     ui.btnCinematic.setAttribute("aria-pressed", "false");
@@ -1072,15 +1041,25 @@ function syncButtons() {
   document.body.classList.toggle("cinematic", false);
 }
 
+/* ✅ Voice test button (index.html dispatches this event) — placed AFTER syncButtons */
+window.addEventListener("mirror:test-voice", () => {
+  ttsUnlocked = true;
+  voiceOn = true;
+
+  // use current UI selections if they exist
+  VOICE_ENGINE = ui.voiceEngine?.value === "browser" ? "browser" : "gpt";
+  GPT_VOICE = ui.voiceSelect?.value || GPT_VOICE;
+
+  syncButtons();
+  speak("Merry Christmas! Mirror OS family tree voice test.", { interrupt: true });
+});
+
 /* Buttons */
 ui.btnPlay?.addEventListener("click", () => {
   playing = !playing;
 
-  if (!playing) {
-    stopVoicePlayback();
-  } else {
-    lastSwitch = performance.now();
-  }
+  if (!playing) stopVoicePlayback();
+  else lastSwitch = performance.now();
 
   syncButtons();
 });
@@ -1103,18 +1082,17 @@ ui.btnVoice?.addEventListener("click", () => {
   if (!voiceOn) {
     stopVoicePlayback();
   } else {
-    // This click is a user gesture — good time to unlock audio + speak
     ttsUnlocked = true;
-    speak(`${ui.currentName.textContent}. ${ui.currentLine.textContent}`, { interrupt: true });
+    speak(`${ui.currentName.textContent}. ${ui.currentLine.textContent}`, {
+      interrupt: true,
+    });
   }
 
   syncButtons();
 });
 
 /* Cinematic is disabled — ignore clicks safely */
-ui.btnCinematic?.addEventListener("click", () => {
-  setCinematic(false);
-});
+ui.btnCinematic?.addEventListener("click", () => setCinematic(false));
 
 /* Music toggle (Option B) */
 ui.btnMusic?.addEventListener("click", () => {
@@ -1189,34 +1167,15 @@ ui.textContainer?.addEventListener("change", () => {
   TEXT_CONTAINER = ui.textContainer.value;
   syncButtons();
 });
-function syncButtons() {
-  // ... your existing sync logic ...
-}
 
-// ✅ add it right here (in app.js)
-window.addEventListener("mirror:test-voice", () => {
-  ttsUnlocked = true;
-  voiceOn = true;
-  VOICE_ENGINE = "gpt";
-  syncButtons();
-
-  speak("Merry Christmas! Mirror OS family tree voice test.", { interrupt: true });
-});
-
-
-/* Keyboard shortcuts:
-   - KEEP Shift+N for songs
-   - DISABLE cinematic toggles (C / ESC)
-*/
+/* Keyboard shortcuts: keep Shift+N, disable cinematic toggles */
 window.addEventListener("keydown", (e) => {
   const k = (e.key || "").toLowerCase();
   if (k === "c" || e.key === "Escape") return;
 });
 
 /* Canvas click no longer toggles UI (always on) */
-canvas.addEventListener("click", () => {
-  // ignore
-});
+canvas.addEventListener("click", () => {});
 
 /* ---------------------------
    Main loop
@@ -1247,7 +1206,7 @@ function boot() {
   syncButtons();
   setCinematic(false);
 
-  // Option B setup: preload first track (no play until unlocked)
+  // preload first track (no play until unlocked)
   if (carol && CAROLS.length) setCarolSrc(0);
 
   if ("serviceWorker" in navigator) {
