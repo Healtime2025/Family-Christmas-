@@ -11,6 +11,9 @@
 <body>
   <canvas id="tree"></canvas>
 
+  <!-- ✅ Option B: audio element (required) -->
+  <audio id="carol" preload="auto"></audio>
+
   <div class="ui">
     <div class="top">
       <div class="brand">
@@ -33,6 +36,10 @@
         <button class="btn" id="btnNext">⏭ Next</button>
         <button class="btn" id="btnShuffle">🔀 Shuffle: On</button>
         <button class="btn" id="btnVoice">🔊 Voice: Off</button>
+
+        <!-- ✅ Option B: Music toggle -->
+        <button class="btn" id="btnMusic">🎵 Music: Off</button>
+
         <button class="btn" id="btnCinematic">🎬 Cinematic: Off</button>
       </div>
 
@@ -113,7 +120,10 @@
     </div>
 
     <div class="foot">
-      <div class="tiny">Tip: Click the canvas or press ESC for full-screen tree • Press C to toggle UI</div>
+      <div class="tiny">
+        Tip: Click the canvas or press ESC for full-screen tree • Press C to toggle UI •
+        <strong>Music:</strong> click 🎵 • <strong>Next song:</strong> Shift+N
+      </div>
     </div>
   </div>
 
