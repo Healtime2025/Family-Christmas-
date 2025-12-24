@@ -1,15 +1,16 @@
 // app.js (module) — imports family data from family.js
 import { FAMILY, EXTRA_TRAITS } from "./family.js";
 
-/* Mirror OS • Family Christmas Tree (v2.6) — Visibility + Full Upward Travel + Option B Carols
-   - Brighter bubbles + thicker border + stronger glow
-   - Text stroke + stronger glow (distance safe)
-   - Words travel to the star (fade only AFTER passing top)
-   - ✅ Christmas Carols Option B (playlist rotation) + Music toggle
-   - Autoplay-safe: starts after first user interaction
-   - Your cinematic + auto-hide logic preserved
+/* Mirror OS • Family Christmas Tree (v2.7) — ALWAYS ON (no sleep / no cinematic auto-hide)
+   - Imports FAMILY + EXTRA_TRAITS from family.js
+   - Option B Carols (playlist rotation) + Music toggle
+   - ✅ NO SLEEP MODE: UI never auto-hides, cinematic is disabled/locked off
+   - Words travel to the star (fade only near top; removed after passing top)
 */
 
+/* ---------------------------
+   Phrases
+--------------------------- */
 const PHRASE_TEMPLATES = [
   (name, picks) => `${name}… ${picks.join(". ")}.`,
   (name, picks) => `${name} — ${picks.join(" • ")}.`,
@@ -31,10 +32,10 @@ let TEXT_FONT_FAMILY = `"Inter", system-ui, -apple-system, Segoe UI, Roboto, Ari
 let TEXT_FONT_SIZE = 18;
 let TEXT_FONT_WEIGHT = 850;
 
-/* ✅ stronger, clearer */
+/* stronger, clearer */
 let TEXT_GLOW_BLUR = 26;
 let TEXT_STROKE_WIDTH = 3.2;
-let TEXT_STROKE_COLOR = "rgba(0,0,0,0.80)"; // distance-safe outline
+let TEXT_STROKE_COLOR = "rgba(0,0,0,0.80)";
 
 let TEXT_COLOR_MODE = "palette";
 let TEXT_SINGLE_COLOR = "hsl(45, 90%, 78%)";
@@ -49,7 +50,7 @@ let TEXT_COLOR_PALETTE = [
 let TEXT_SHAPE = "tree";
 let TEXT_SHAPE_RADIUS = 0.28;
 
-/* ✅ bubbles: stronger visibility */
+/* bubbles: stronger visibility */
 let TEXT_CONTAINER = "ball";
 let ORNAMENT_PADDING_X = 14;
 let ORNAMENT_PADDING_Y = 10;
@@ -57,12 +58,12 @@ let ORNAMENT_BG_COLOR = "rgba(25,25,35,0.82)";
 let ORNAMENT_BORDER_COLOR = "rgba(255,255,255,0.82)";
 let ORNAMENT_GLOW = 26;
 
-/* ✅ travel tuning (top reach) */
+/* travel tuning (top reach) */
 const FLOW = {
-  startU: 0.98,      // spawn near bottom
-  spacing: 0.040,    // word spacing
-  endU: -0.10,       // remove AFTER passing top
-  fadeStartU: 0.06,  // begin fading very close to the top
+  startU: 0.98,
+  spacing: 0.040,
+  endU: -0.10,
+  fadeStartU: 0.06,
 };
 
 /* ---------------------------
@@ -80,9 +81,11 @@ const ui = {
   btnNext: el("btnNext"),
   btnShuffle: el("btnShuffle"),
   btnVoice: el("btnVoice"),
+
+  // cinematic button exists in HTML but is locked off
   btnCinematic: el("btnCinematic"),
 
-  // ✅ Option B music button
+  // Option B music button
   btnMusic: el("btnMusic"),
 
   treeStyle: el("treeStyle"),
@@ -114,7 +117,6 @@ window.addEventListener("resize", resize, { passive: true });
 
 /* ---------------------------
    🎵 Christmas Carol Audio (Option B: playlist rotation)
-   - Autoplay-safe: starts after first user interaction
 --------------------------- */
 const carol = el("carol");
 const CAROLS = [
@@ -128,8 +130,8 @@ let carolIndex = 0;
 let carolUnlocked = false;
 
 const CAROL = {
-  volume: 0.25,       // gentle
-  fadeMs: 650,        // smooth transitions
+  volume: 0.25,
+  fadeMs: 650,
 };
 
 function setCarolSrc(i) {
@@ -142,9 +144,9 @@ function setCarolSrc(i) {
 function fadeTo(target, ms = 500) {
   if (!carol) return;
   const start = carol.volume;
-  const t0 = performance.now();
+  const tStart = performance.now();
   function step(now) {
-    const t = Math.min(1, (now - t0) / ms);
+    const t = Math.min(1, (now - tStart) / ms);
     carol.volume = start + (target - start) * t;
     if (t < 1) requestAnimationFrame(step);
   }
@@ -153,10 +155,10 @@ function fadeTo(target, ms = 500) {
 
 async function playCarol() {
   if (!carol) return;
-  if (!carolUnlocked) return; // must be unlocked by interaction
+  if (!carolUnlocked) return;
   try {
     if (!carol.src) setCarolSrc(0);
-    carol.loop = false; // Option B rotates tracks
+    carol.loop = false;
     carol.volume = 0.01;
     await carol.play();
     carolOn = true;
@@ -219,6 +221,8 @@ let order = [];
 let lastSwitch = 0;
 
 let speakToken = 0;
+
+/* ✅ ALWAYS ON: cinematic is disabled + locked OFF */
 let cinematic = false;
 
 /* words */
@@ -264,8 +268,10 @@ function shuffle(arr) {
   }
   return arr;
 }
+
 function pickAffirmation(member) {
-  const base = [...member.traits];
+  const base = [...(member.traits || [])];
+
   const addN = Math.random() < 0.65 ? 1 : 2;
   for (let i = 0; i < addN; i++) base.push(EXTRA_TRAITS[(Math.random() * EXTRA_TRAITS.length) | 0]);
 
@@ -274,6 +280,7 @@ function pickAffirmation(member) {
 
   const count = 3 + ((Math.random() * 2) | 0);
   const picks = uniq.slice(0, Math.min(count, uniq.length));
+
   const tmpl = PHRASE_TEMPLATES[(Math.random() * PHRASE_TEMPLATES.length) | 0];
   return tmpl(member.name, picks);
 }
@@ -285,7 +292,8 @@ function setNow(member, line) {
   if (ui.configPreview) {
     ui.configPreview.textContent = JSON.stringify(
       {
-        treeMode, shuffleOn, voiceOn, cinematic,
+        treeMode, shuffleOn, voiceOn,
+        cinematic, // always false
         switchSpeed: speedKey, brightness,
         textSpeedSlider: TEXT_SPEED_SLIDER, textSpeed: TEXT_SPEED,
         fontSize: TEXT_FONT_SIZE,
@@ -501,6 +509,8 @@ function renderTreeText(now, dt, cfg) {
    Member cycle
 --------------------------- */
 function nextMember() {
+  if (!Array.isArray(FAMILY) || FAMILY.length === 0) return;
+
   if (order.length !== FAMILY.length) makeOrder();
   const member = FAMILY[order[idx % order.length]];
   const line = pickAffirmation(member);
@@ -706,27 +716,14 @@ function draw(now) {
 }
 
 /* ===============================
-   Cinematic / Auto-hide panel
+   ✅ ALWAYS ON — NO CINEMATIC / NO AUTO-HIDE
 ================================= */
-let uiIdleTimer = null;
-const UI_IDLE_MS = 2500;
-
-function setCinematic(on) {
-  cinematic = !!on;
+function setCinematic(_) {
+  cinematic = false; // locked off
   syncButtons();
-  if (!cinematic) resetUiIdleTimer();
 }
-
-function resetUiIdleTimer() {
-  clearTimeout(uiIdleTimer);
-  if (cinematic) return;
-  uiIdleTimer = setTimeout(() => setCinematic(true), UI_IDLE_MS);
-}
-
-function noteUiActivity() {
-  if (cinematic) setCinematic(false);
-  resetUiIdleTimer();
-}
+function resetUiIdleTimer() { /* no-op */ }
+function noteUiActivity() { /* no-op */ }
 
 /* ===============================
    UI
@@ -749,9 +746,14 @@ function syncButtons() {
   if (ui.textShape) ui.textShape.value = String(TEXT_SHAPE);
   if (ui.textContainer) ui.textContainer.value = String(TEXT_CONTAINER);
 
+  // Cinematic button stays OFF (and doesn’t toggle)
   if (ui.btnCinematic) {
-    ui.btnCinematic.textContent = `🎬 Cinematic: ${cinematic ? "On" : "Off"}`;
-    ui.btnCinematic.setAttribute("aria-pressed", String(cinematic));
+    ui.btnCinematic.textContent = "🎬 Cinematic: Off";
+    ui.btnCinematic.setAttribute("aria-pressed", "false");
+    ui.btnCinematic.disabled = true;     // ✅ prevents clicking it
+    ui.btnCinematic.style.opacity = "0.6";
+    ui.btnCinematic.style.cursor = "not-allowed";
+    ui.btnCinematic.title = "Always On mode: cinematic is disabled";
   }
 
   if (ui.btnMusic) {
@@ -759,12 +761,11 @@ function syncButtons() {
     ui.btnMusic.setAttribute("aria-pressed", String(carolOn));
   }
 
-  document.body.classList.toggle("cinematic", cinematic);
+  document.body.classList.toggle("cinematic", false);
 }
 
 /* Buttons */
 ui.btnPlay?.addEventListener("click", () => {
-  noteUiActivity();
   playing = !playing;
   if (!playing) { try { window.speechSynthesis?.cancel(); } catch (_) {} }
   else { lastSwitch = performance.now(); }
@@ -772,13 +773,11 @@ ui.btnPlay?.addEventListener("click", () => {
 });
 
 ui.btnNext?.addEventListener("click", () => {
-  noteUiActivity();
   nextMember();
   lastSwitch = performance.now();
 });
 
 ui.btnShuffle?.addEventListener("click", () => {
-  noteUiActivity();
   shuffleOn = !shuffleOn;
   makeOrder();
   idx = 0;
@@ -786,20 +785,19 @@ ui.btnShuffle?.addEventListener("click", () => {
 });
 
 ui.btnVoice?.addEventListener("click", () => {
-  noteUiActivity();
   voiceOn = !voiceOn;
   if (!voiceOn) { try { window.speechSynthesis?.cancel(); } catch (_) {} }
   else { speak(`${ui.currentName.textContent}. ${ui.currentLine.textContent}`); }
   syncButtons();
 });
 
+/* Cinematic is disabled — ignore clicks safely */
 ui.btnCinematic?.addEventListener("click", () => {
-  setCinematic(!cinematic);
+  setCinematic(false);
 });
 
-/* ✅ Music toggle (Option B) */
+/* Music toggle (Option B) */
 ui.btnMusic?.addEventListener("click", () => {
-  noteUiActivity();
   if (!carolUnlocked) {
     carolUnlocked = true;
     if (carol && !carol.src) setCarolSrc(0);
@@ -809,7 +807,7 @@ ui.btnMusic?.addEventListener("click", () => {
   syncButtons();
 });
 
-/* Optional: Shift+N to skip to next carol */
+/* Shift+N to skip to next carol */
 window.addEventListener("keydown", (e) => {
   if (e.shiftKey && (e.key || "").toLowerCase() === "n") {
     if (!carolUnlocked) return;
@@ -819,69 +817,61 @@ window.addEventListener("keydown", (e) => {
 
 /* Dropdowns / sliders */
 ui.treeStyle?.addEventListener("change", () => {
-  noteUiActivity();
   treeMode = ui.treeStyle.value;
   if (treeMode === "lights") initLights(); else initGold();
   syncButtons();
 });
 
 ui.speed?.addEventListener("change", () => {
-  noteUiActivity();
   speedKey = ui.speed.value;
   syncButtons();
 });
 
 ui.brightness?.addEventListener("input", () => {
-  noteUiActivity();
   brightness = Number(ui.brightness.value);
 });
 
 ui.textSpeed?.addEventListener("input", () => {
-  noteUiActivity();
   TEXT_SPEED_SLIDER = Number(ui.textSpeed.value);
   updateTextSpeedFromSlider();
   syncButtons();
 });
 
 ui.fontSize?.addEventListener("input", () => {
-  noteUiActivity();
   TEXT_FONT_SIZE = Number(ui.fontSize.value);
   syncButtons();
 });
 
 ui.colorMode?.addEventListener("change", () => {
-  noteUiActivity();
   TEXT_COLOR_MODE = ui.colorMode.value;
   syncButtons();
 });
 
 ui.textShape?.addEventListener("change", () => {
-  noteUiActivity();
   TEXT_SHAPE = ui.textShape.value;
   syncButtons();
 });
 
 ui.textContainer?.addEventListener("change", () => {
-  noteUiActivity();
   TEXT_CONTAINER = ui.textContainer.value;
   syncButtons();
 });
 
-/* Keyboard shortcuts */
+/* Keyboard shortcuts:
+   - We KEEP Shift+N for songs
+   - We DISABLE cinematic toggles (C / ESC) so it never hides
+*/
 window.addEventListener("keydown", (e) => {
   const k = (e.key || "").toLowerCase();
-  if (k === "c") {
-    setCinematic(!cinematic);
-  } else if (e.key === "Escape") {
-    setCinematic(true);
-  } else {
-    if (cinematic) noteUiActivity();
+  if (k === "c" || e.key === "Escape") {
+    // ignore
+    return;
   }
 });
 
-/* Canvas click toggles UI */
+/* Canvas click no longer toggles UI (always on) */
 canvas.addEventListener("click", () => {
-  setCinematic(!cinematic);
+  // ignore
 });
 
 /* ---------------------------
