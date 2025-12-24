@@ -87,7 +87,11 @@ let ttsUnlocked = false;
 // TTS playback + cancellation
 let speakToken = 0;
 let ttsAbort = null;
-const ttsAudio = new Audio();
+
+// ✅ Use the <audio id="tts"> element if it exists (more stable + debuggable)
+const ttsAudioEl = document.getElementById("tts");
+const ttsAudio =
+  ttsAudioEl && ttsAudioEl instanceof HTMLAudioElement ? ttsAudioEl : new Audio();
 ttsAudio.preload = "none";
 
 /* ---------------------------
