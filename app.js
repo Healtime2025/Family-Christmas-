@@ -1189,6 +1189,20 @@ ui.textContainer?.addEventListener("change", () => {
   TEXT_CONTAINER = ui.textContainer.value;
   syncButtons();
 });
+function syncButtons() {
+  // ... your existing sync logic ...
+}
+
+// ✅ add it right here (in app.js)
+window.addEventListener("mirror:test-voice", () => {
+  ttsUnlocked = true;
+  voiceOn = true;
+  VOICE_ENGINE = "gpt";
+  syncButtons();
+
+  speak("Merry Christmas! Mirror OS family tree voice test.", { interrupt: true });
+});
+
 
 /* Keyboard shortcuts:
    - KEEP Shift+N for songs
