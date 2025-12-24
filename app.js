@@ -1,3 +1,6 @@
+// app.js (module) — imports family data from family.js
+import { FAMILY, EXTRA_TRAITS } from "./family.js";
+
 /* Mirror OS • Family Christmas Tree (v2.6) — Visibility + Full Upward Travel + Option B Carols
    - Brighter bubbles + thicker border + stronger glow
    - Text stroke + stronger glow (distance safe)
@@ -6,23 +9,6 @@
    - Autoplay-safe: starts after first user interaction
    - Your cinematic + auto-hide logic preserved
 */
-
-/* ---------------------------
-   Family
---------------------------- */
-const FAMILY = [
-  { name: "Dad", traits: ["visionary", "strong", "full of love", "protector", "builder of dreams"] },
-  { name: "Mom", traits: ["gentle", "wise", "full of grace", "caring", "holds the home together"] },
-  { name: "Daughter (18)", traits: ["bright future", "creative", "confident", "kind heart", "leader in the making"] },
-  { name: "Son (10)", traits: ["curious", "brave", "smart", "funny", "likes Spider-Man"] },
-  { name: "Son (7)", traits: ["playful", "loving", "imaginative", "joyful", "likes Spider-Man"] },
-];
-
-const EXTRA_TRAITS = [
-  "deeply appreciated","a blessing to the family","a light in the room","full of purpose",
-  "brings joy","brings peace","resilient","courageous","faith-filled","thoughtful",
-  "fun to be around","a gift from God",
-];
 
 const PHRASE_TEMPLATES = [
   (name, picks) => `${name}… ${picks.join(". ")}.`,
@@ -96,7 +82,7 @@ const ui = {
   btnVoice: el("btnVoice"),
   btnCinematic: el("btnCinematic"),
 
-  // ✅ optional music button (add in HTML if you want)
+  // ✅ Option B music button
   btnMusic: el("btnMusic"),
 
   treeStyle: el("treeStyle"),
@@ -196,7 +182,6 @@ function nextCarol(auto = true) {
   if (!carol) return;
   setCarolSrc(carolIndex + 1);
   if (carolOn) {
-    // small fade between songs
     fadeTo(0.01, 220);
     carol.play().then(() => fadeTo(CAROL.volume, CAROL.fadeMs)).catch(() => {});
   } else if (!auto) {
@@ -204,19 +189,14 @@ function nextCarol(auto = true) {
   }
 }
 
-// when a track ends, rotate to next
 carol?.addEventListener("ended", () => {
   if (!carolOn) return;
   nextCarol(true);
 });
 
-// unlock audio on first user gesture
 function unlockAudioOnce() {
   carolUnlocked = true;
-  // preload first track so it starts instantly when user turns on
   if (carol && !carol.src) setCarolSrc(0);
-  // if you want it to start immediately after first click:
-  // playCarol();
   window.removeEventListener("pointerdown", unlockAudioOnce);
   window.removeEventListener("keydown", unlockAudioOnce);
 }
@@ -262,12 +242,11 @@ function roundRectPath(x, y, w, h, r) {
   ctx.closePath();
 }
 
-/* ✅ Speed slider mapping */
 function updateTextSpeedFromSlider() {
   const t = clamp(TEXT_SPEED_SLIDER / 100, 0, 1);
-  const curved = t * t;        // fine control at low end
-  const min = 0.0;             // true stop
-  const max = 0.000140;        // faster ceiling so it can reach the star
+  const curved = t * t;
+  const min = 0.0;
+  const max = 0.000140;
   TEXT_SPEED = lerp(min, max, curved);
 }
 
@@ -331,7 +310,6 @@ function speak(text) {
     const token = ++speakToken;
     window.speechSynthesis.cancel();
 
-    // duck music while speaking (nice)
     if (carolOn && carol) fadeTo(0.12, 180);
 
     const u = new SpeechSynthesisUtterance(text);
@@ -355,7 +333,6 @@ function pickTextColor() {
   return `hsl(${Math.random() * 360}, 90%, 78%)`;
 }
 
-/* ✅ Spawn: words start near bottom and travel to star */
 function spawnTreeText(text) {
   const words = String(text).split(/\s+/).filter(Boolean);
 
@@ -423,12 +400,10 @@ function hslToHsla(hsl, a) {
 }
 
 /* ---------------------------
-   Render text (✅ bold + readable)
+   Render text
 --------------------------- */
 function renderTreeText(now, dt, cfg) {
   ctx.save();
-
-  /* ✅ IMPORTANT: use source-over for strong opacity */
   ctx.globalCompositeOperation = "source-over";
 
   ctx.font = `${TEXT_FONT_WEIGHT} ${TEXT_FONT_SIZE}px ${TEXT_FONT_FAMILY}`;
@@ -438,20 +413,14 @@ function renderTreeText(now, dt, cfg) {
   const alive = [];
 
   for (const t of treeText) {
-    // ✅ move upward (u decreasing -> goes to top)
     const step = (TEXT_SPEED * (t.mult || 1)) || 0;
     t.u -= step * dt;
 
-    // warm-in
     t.alpha = Math.min(1, t.alpha + 0.014);
-
-    // remove after passing top
     if (t.u < FLOW.endU) continue;
 
-    // ✅ strong visibility (distance safe)
     let a = clamp((0.60 + 0.40 * t.alpha) * brightness, 0, 1);
 
-    // fade only near the very top / after passing top
     if (t.u < FLOW.fadeStartU) {
       const fade = clamp((t.u - FLOW.endU) / (FLOW.fadeStartU - FLOW.endU), 0, 1);
       a *= fade;
@@ -471,7 +440,6 @@ function renderTreeText(now, dt, cfg) {
     ctx.translate(pos.x, pos.y);
     ctx.scale(scale, scale);
 
-    /* ✅ Ornament container */
     if (TEXT_CONTAINER !== "none") {
       ctx.save();
       ctx.globalAlpha = a;
@@ -489,7 +457,6 @@ function renderTreeText(now, dt, cfg) {
         ctx.fill();
         ctx.stroke();
 
-        // extra highlight glow (makes it pop far away)
         ctx.globalAlpha = a * 0.35;
         ctx.fillStyle = "rgba(255,255,255,0.16)";
         ctx.beginPath();
@@ -510,23 +477,19 @@ function renderTreeText(now, dt, cfg) {
       ctx.restore();
     }
 
-    /* ✅ Text (stroke + glow) */
     const fill = hslToHsla(t.color, a);
 
-    // stroke
     ctx.globalAlpha = a;
     ctx.lineWidth = TEXT_STROKE_WIDTH;
     ctx.strokeStyle = TEXT_STROKE_COLOR;
     ctx.strokeText(t.word, 0, 0);
 
-    // fill + glow
     ctx.fillStyle = fill;
     ctx.shadowColor = fill;
     ctx.shadowBlur = TEXT_GLOW_BLUR;
     ctx.fillText(t.word, 0, 0);
 
     ctx.restore();
-
     alive.push(t);
   }
 
@@ -552,7 +515,7 @@ function nextMember() {
 }
 
 /* ---------------------------
-   Tree visuals (your originals)
+   Tree visuals (originals)
 --------------------------- */
 const CYAN = { r: 120, g: 215, b: 255 };
 function rgba(c, a) { return `rgba(${c.r},${c.g},${c.b},${a})`; }
@@ -838,7 +801,6 @@ ui.btnCinematic?.addEventListener("click", () => {
 ui.btnMusic?.addEventListener("click", () => {
   noteUiActivity();
   if (!carolUnlocked) {
-    // user clicked: this is a valid gesture, unlock audio
     carolUnlocked = true;
     if (carol && !carol.src) setCarolSrc(0);
   }
