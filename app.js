@@ -1,7 +1,9 @@
-/* Mirror OS • Family Christmas Tree (v2.6) — Visibility + Full Upward Travel
+/* Mirror OS • Family Christmas Tree (v2.6) — Visibility + Full Upward Travel + Option B Carols
    - Brighter bubbles + thicker border + stronger glow
    - Text stroke + stronger glow (distance safe)
    - Words travel to the star (fade only AFTER passing top)
+   - ✅ Christmas Carols Option B (playlist rotation) + Music toggle
+   - Autoplay-safe: starts after first user interaction
    - Your cinematic + auto-hide logic preserved
 */
 
@@ -94,6 +96,9 @@ const ui = {
   btnVoice: el("btnVoice"),
   btnCinematic: el("btnCinematic"),
 
+  // ✅ optional music button (add in HTML if you want)
+  btnMusic: el("btnMusic"),
+
   treeStyle: el("treeStyle"),
   speed: el("speed"),
   brightness: el("brightness"),
@@ -120,6 +125,103 @@ function resize() {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
 window.addEventListener("resize", resize, { passive: true });
+
+/* ---------------------------
+   🎵 Christmas Carol Audio (Option B: playlist rotation)
+   - Autoplay-safe: starts after first user interaction
+--------------------------- */
+const carol = el("carol");
+const CAROLS = [
+  "./carols/silent-night.mp3",
+  "./carols/oh-holy-night.mp3",
+  "./carols/away-in-a-manger.mp3",
+];
+
+let carolOn = false;
+let carolIndex = 0;
+let carolUnlocked = false;
+
+const CAROL = {
+  volume: 0.25,       // gentle
+  fadeMs: 650,        // smooth transitions
+};
+
+function setCarolSrc(i) {
+  if (!carol) return;
+  const safe = ((i % CAROLS.length) + CAROLS.length) % CAROLS.length;
+  carolIndex = safe;
+  carol.src = CAROLS[carolIndex];
+}
+
+function fadeTo(target, ms = 500) {
+  if (!carol) return;
+  const start = carol.volume;
+  const t0 = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - t0) / ms);
+    carol.volume = start + (target - start) * t;
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+async function playCarol() {
+  if (!carol) return;
+  if (!carolUnlocked) return; // must be unlocked by interaction
+  try {
+    if (!carol.src) setCarolSrc(0);
+    carol.loop = false; // Option B rotates tracks
+    carol.volume = 0.01;
+    await carol.play();
+    carolOn = true;
+    fadeTo(CAROL.volume, CAROL.fadeMs);
+    if (ui.btnMusic) ui.btnMusic.textContent = "🎵 Music: On";
+  } catch (_) {}
+}
+
+function stopCarol() {
+  if (!carol) return;
+  try {
+    fadeTo(0.0, 250);
+    setTimeout(() => {
+      carol.pause();
+      carol.currentTime = 0;
+      carolOn = false;
+      if (ui.btnMusic) ui.btnMusic.textContent = "🎵 Music: Off";
+    }, 260);
+  } catch (_) {}
+}
+
+function nextCarol(auto = true) {
+  if (!carol) return;
+  setCarolSrc(carolIndex + 1);
+  if (carolOn) {
+    // small fade between songs
+    fadeTo(0.01, 220);
+    carol.play().then(() => fadeTo(CAROL.volume, CAROL.fadeMs)).catch(() => {});
+  } else if (!auto) {
+    // manual next requested but music is off -> just prep next
+  }
+}
+
+// when a track ends, rotate to next
+carol?.addEventListener("ended", () => {
+  if (!carolOn) return;
+  nextCarol(true);
+});
+
+// unlock audio on first user gesture
+function unlockAudioOnce() {
+  carolUnlocked = true;
+  // preload first track so it starts instantly when user turns on
+  if (carol && !carol.src) setCarolSrc(0);
+  // if you want it to start immediately after first click:
+  // playCarol();
+  window.removeEventListener("pointerdown", unlockAudioOnce);
+  window.removeEventListener("keydown", unlockAudioOnce);
+}
+window.addEventListener("pointerdown", unlockAudioOnce, { once: true });
+window.addEventListener("keydown", unlockAudioOnce, { once: true });
 
 /* ---------------------------
    State
@@ -210,7 +312,8 @@ function setNow(member, line) {
         fontSize: TEXT_FONT_SIZE,
         colorMode: TEXT_COLOR_MODE,
         shape: TEXT_SHAPE,
-        container: TEXT_CONTAINER
+        container: TEXT_CONTAINER,
+        carolOn, carolIndex
       },
       null,
       2
@@ -219,7 +322,7 @@ function setNow(member, line) {
 }
 
 /* ---------------------------
-   Voice
+   Voice (with optional music ducking)
 --------------------------- */
 function speak(text) {
   if (!voiceOn) return;
@@ -227,11 +330,18 @@ function speak(text) {
   try {
     const token = ++speakToken;
     window.speechSynthesis.cancel();
+
+    // duck music while speaking (nice)
+    if (carolOn && carol) fadeTo(0.12, 180);
+
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 0.95;
     u.pitch = 1.0;
     u.volume = 1.0;
-    u.onend = () => { if (token !== speakToken) return; };
+    u.onend = () => {
+      if (token !== speakToken) return;
+      if (carolOn && carol) fadeTo(CAROL.volume, 300);
+    };
     window.speechSynthesis.speak(u);
   } catch (_) {}
 }
@@ -681,6 +791,11 @@ function syncButtons() {
     ui.btnCinematic.setAttribute("aria-pressed", String(cinematic));
   }
 
+  if (ui.btnMusic) {
+    ui.btnMusic.textContent = carolOn ? "🎵 Music: On" : "🎵 Music: Off";
+    ui.btnMusic.setAttribute("aria-pressed", String(carolOn));
+  }
+
   document.body.classList.toggle("cinematic", cinematic);
 }
 
@@ -717,6 +832,27 @@ ui.btnVoice?.addEventListener("click", () => {
 
 ui.btnCinematic?.addEventListener("click", () => {
   setCinematic(!cinematic);
+});
+
+/* ✅ Music toggle (Option B) */
+ui.btnMusic?.addEventListener("click", () => {
+  noteUiActivity();
+  if (!carolUnlocked) {
+    // user clicked: this is a valid gesture, unlock audio
+    carolUnlocked = true;
+    if (carol && !carol.src) setCarolSrc(0);
+  }
+  if (carolOn) stopCarol();
+  else playCarol();
+  syncButtons();
+});
+
+/* Optional: Shift+N to skip to next carol */
+window.addEventListener("keydown", (e) => {
+  if (e.shiftKey && (e.key || "").toLowerCase() === "n") {
+    if (!carolUnlocked) return;
+    nextCarol(false);
+  }
 });
 
 /* Dropdowns / sliders */
@@ -814,6 +950,9 @@ function boot() {
   nextMember();
   syncButtons();
   setCinematic(false);
+
+  // Option B setup: preload first track (no play until unlocked)
+  if (carol && CAROLS.length) setCarolSrc(0);
 
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
