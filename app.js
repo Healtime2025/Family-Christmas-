@@ -1,11 +1,12 @@
 // app.js (module) — imports family data from family.js
 import { FAMILY, EXTRA_TRAITS } from "./family.js";
 
-/* Mirror OS • Family Christmas Tree (v2.7) — ALWAYS ON (no sleep / no cinematic auto-hide)
+/* Mirror OS • Family Christmas Tree (v2.8) — ALWAYS ON + ✅ GPT Voice (via /api/tts)
    - Imports FAMILY + EXTRA_TRAITS from family.js
    - Option B Carols (playlist rotation) + Music toggle
    - ✅ NO SLEEP MODE: UI never auto-hides, cinematic is disabled/locked off
    - Words travel to the star (fade only near top; removed after passing top)
+   - ✅ GPT Voice: calls /api/tts (Vercel) and plays MP3 (with browser voice fallback)
 */
 
 /* ---------------------------
@@ -16,7 +17,9 @@ const PHRASE_TEMPLATES = [
   (name, picks) => `${name} — ${picks.join(" • ")}.`,
   (name, picks) => `We celebrate ${name}: ${picks.join(", ")}.`,
   (name, picks) =>
-    `${name}: ${picks[0]}. ${picks[1] ? picks[1] + "." : ""} ${picks[2] ? picks[2] + "." : ""}`.trim(),
+    `${name}: ${picks[0]}. ${picks[1] ? picks[1] + "." : ""} ${
+      picks[2] ? picks[2] + "." : ""
+    }`.trim(),
 ];
 
 /* Name switching ONLY */
@@ -26,7 +29,7 @@ const SPEEDS = { slow: 5200, normal: 3600, fast: 2400 };
    TEXT CONTROLS
 ================================= */
 let TEXT_SPEED_SLIDER = 35; // 0..100
-let TEXT_SPEED = 0.000045;  // derived
+let TEXT_SPEED = 0.000045; // derived
 
 let TEXT_FONT_FAMILY = `"Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`;
 let TEXT_FONT_SIZE = 18;
@@ -66,6 +69,27 @@ const FLOW = {
   fadeStartU: 0.06,
 };
 
+/* ===============================
+   ✅ GPT VOICE SETTINGS
+   - Calls POST /api/tts { text, voice }
+   - Plays returned MP3
+================================= */
+let VOICE_ENGINE = "gpt"; // "gpt" | "browser"
+let GPT_VOICE = "alloy";  // alloy | marin | cedar | ember ...
+let GPT_TTS_ENDPOINT = "/api/tts";
+
+// Browser voice fallback tuning
+const BROWSER_VOICE = { rate: 0.95, pitch: 1.0, volume: 1.0 };
+
+// Autoplay gating (first interaction)
+let ttsUnlocked = false;
+
+// TTS playback + cancellation
+let speakToken = 0;
+let ttsAbort = null;
+const ttsAudio = new Audio();
+ttsAudio.preload = "none";
+
 /* ---------------------------
    DOM / Canvas
 --------------------------- */
@@ -98,10 +122,16 @@ const ui = {
   textShape: el("textShape"),
   textContainer: el("textContainer"),
 
+  // OPTIONAL (if you add in HTML later; code won’t break if absent)
+  voiceEngine: el("voiceEngine"),   // <select id="voiceEngine"><option value="gpt">GPT</option><option value="browser">Browser</option></select>
+  voiceSelect: el("voiceSelect"),   // <select id="voiceSelect">...</select>
+
   configPreview: el("configPreview"),
 };
 
-let W = 0, H = 0, DPR = 1;
+let W = 0,
+  H = 0,
+  DPR = 1;
 function resize() {
   DPR = Math.min(2, window.devicePixelRatio || 1);
   W = Math.floor(window.innerWidth);
@@ -185,7 +215,10 @@ function nextCarol(auto = true) {
   setCarolSrc(carolIndex + 1);
   if (carolOn) {
     fadeTo(0.01, 220);
-    carol.play().then(() => fadeTo(CAROL.volume, CAROL.fadeMs)).catch(() => {});
+    carol
+      .play()
+      .then(() => fadeTo(CAROL.volume, CAROL.fadeMs))
+      .catch(() => {});
   } else if (!auto) {
     // manual next requested but music is off -> just prep next
   }
@@ -196,9 +229,15 @@ carol?.addEventListener("ended", () => {
   nextCarol(true);
 });
 
+/* ---------------------------
+   Unlock audio once (music + TTS)
+--------------------------- */
 function unlockAudioOnce() {
   carolUnlocked = true;
+  ttsUnlocked = true;
+
   if (carol && !carol.src) setCarolSrc(0);
+
   window.removeEventListener("pointerdown", unlockAudioOnce);
   window.removeEventListener("keydown", unlockAudioOnce);
 }
@@ -220,8 +259,6 @@ let idx = 0;
 let order = [];
 let lastSwitch = 0;
 
-let speakToken = 0;
-
 /* ✅ ALWAYS ON: cinematic is disabled + locked OFF */
 let cinematic = false;
 
@@ -231,12 +268,19 @@ let treeText = [];
 /* ---------------------------
    Helpers
 --------------------------- */
-function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-function lerp(a, b, t) { return a + (b - a) * t; }
+function clamp(v, a, b) {
+  return Math.max(a, Math.min(b, v));
+}
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
 
 function roundRectPath(x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, Math.min(w, h) / 2));
-  if (ctx.roundRect) { ctx.roundRect(x, y, w, h, rr); return; }
+  if (ctx.roundRect) {
+    ctx.roundRect(x, y, w, h, rr);
+    return;
+  }
   ctx.beginPath();
   ctx.moveTo(x + rr, y);
   ctx.arcTo(x + w, y, x + w, y + h, rr);
@@ -273,7 +317,8 @@ function pickAffirmation(member) {
   const base = [...(member.traits || [])];
 
   const addN = Math.random() < 0.65 ? 1 : 2;
-  for (let i = 0; i < addN; i++) base.push(EXTRA_TRAITS[(Math.random() * EXTRA_TRAITS.length) | 0]);
+  for (let i = 0; i < addN; i++)
+    base.push(EXTRA_TRAITS[(Math.random() * EXTRA_TRAITS.length) | 0]);
 
   const uniq = [...new Set(base)];
   shuffle(uniq);
@@ -281,7 +326,8 @@ function pickAffirmation(member) {
   const count = 3 + ((Math.random() * 2) | 0);
   const picks = uniq.slice(0, Math.min(count, uniq.length));
 
-  const tmpl = PHRASE_TEMPLATES[(Math.random() * PHRASE_TEMPLATES.length) | 0];
+  const tmpl =
+    PHRASE_TEMPLATES[(Math.random() * PHRASE_TEMPLATES.length) | 0];
   return tmpl(member.name, picks);
 }
 
@@ -292,15 +338,23 @@ function setNow(member, line) {
   if (ui.configPreview) {
     ui.configPreview.textContent = JSON.stringify(
       {
-        treeMode, shuffleOn, voiceOn,
+        treeMode,
+        shuffleOn,
+        voiceOn,
+        voiceEngine: VOICE_ENGINE,
+        gptVoice: GPT_VOICE,
         cinematic, // always false
-        switchSpeed: speedKey, brightness,
-        textSpeedSlider: TEXT_SPEED_SLIDER, textSpeed: TEXT_SPEED,
+        switchSpeed: speedKey,
+        brightness,
+        textSpeedSlider: TEXT_SPEED_SLIDER,
+        textSpeed: TEXT_SPEED,
         fontSize: TEXT_FONT_SIZE,
         colorMode: TEXT_COLOR_MODE,
         shape: TEXT_SHAPE,
         container: TEXT_CONTAINER,
-        carolOn, carolIndex
+        carolOn,
+        carolIndex,
+        ttsUnlocked
       },
       null,
       2
@@ -308,28 +362,190 @@ function setNow(member, line) {
   }
 }
 
-/* ---------------------------
-   Voice (with optional music ducking)
---------------------------- */
-function speak(text) {
-  if (!voiceOn) return;
-  if (!("speechSynthesis" in window)) return;
+/* ===============================
+   ✅ VOICE: GPT TTS + fallback
+================================= */
+function stopVoicePlayback() {
+  // Cancel any pending fetch
   try {
-    const token = ++speakToken;
+    if (ttsAbort) ttsAbort.abort();
+  } catch (_) {}
+  ttsAbort = null;
+
+  // Stop HTMLAudio playback
+  try {
+    ttsAudio.pause();
+    ttsAudio.src = "";
+  } catch (_) {}
+
+  // Stop browser speech
+  try {
+    window.speechSynthesis?.cancel();
+  } catch (_) {}
+}
+
+function speakTextForMember(memberName, line) {
+  // Speak: "Name. affirmation..." (cleaned)
+  const cleaned = `${memberName}. ${String(line || "")
+    .replace(memberName, "")
+    .replace("…", "")
+    .replace("—", "")
+    .trim()}`.trim();
+
+  if (cleaned) speak(cleaned, { interrupt: true });
+}
+
+async function speak(text, { interrupt = true } = {}) {
+  if (!voiceOn) return;
+  if (!text) return;
+
+  // If we’re paused, do not talk.
+  if (!playing) return;
+
+  // Interrupt previous voice immediately (best UX for "Next" / auto switch)
+  if (interrupt) {
+    speakToken++;
+    stopVoicePlayback();
+  } else {
+    // still isolate with token bump
+    speakToken++;
+  }
+
+  const token = speakToken;
+
+  // Duck music a bit while speaking
+  if (carolOn && carol) fadeTo(0.12, 180);
+
+  // Prefer GPT engine if selected and endpoint available
+  if (VOICE_ENGINE === "gpt") {
+    const ok = await speakViaGPT(text, token);
+    if (ok) return; // done
+  }
+
+  // Fallback to browser TTS
+  speakViaBrowser(text, token);
+}
+
+async function speakViaGPT(text, token) {
+  // Need unlock for audio play stability (first interaction)
+  if (!ttsUnlocked) return false;
+
+  try {
+    // Abort any previous request
+    if (ttsAbort) {
+      try { ttsAbort.abort(); } catch (_) {}
+    }
+    ttsAbort = new AbortController();
+
+    const res = await fetch(GPT_TTS_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: ttsAbort.signal,
+      body: JSON.stringify({ text, voice: GPT_VOICE }),
+    });
+
+    if (!res.ok) return false;
+    if (token !== speakToken) return true; // newer speak happened; treat as handled
+
+    const blob = await res.blob();
+    if (token !== speakToken) return true;
+
+    const url = URL.createObjectURL(blob);
+
+    // Stop any previous audio cleanly
+    try {
+      ttsAudio.pause();
+      ttsAudio.src = "";
+    } catch (_) {}
+
+    ttsAudio.src = url;
+
+    // Play
+    const p = ttsAudio.play();
+    if (p && typeof p.then === "function") {
+      await p.catch(() => {
+        // Autoplay blocked or other error -> fallback
+        try { URL.revokeObjectURL(url); } catch (_) {}
+        throw new Error("audio_play_failed");
+      });
+    }
+
+    // Wait until end OR interrupted
+    await new Promise((resolve) => {
+      const onEnd = () => cleanup(true);
+      const onError = () => cleanup(false);
+
+      const cleanup = (endedOk) => {
+        ttsAudio.removeEventListener("ended", onEnd);
+        ttsAudio.removeEventListener("error", onError);
+
+        // Only restore music if still current token
+        if (token === speakToken) {
+          if (carolOn && carol) fadeTo(CAROL.volume, 300);
+        }
+
+        // release blob url
+        try { URL.revokeObjectURL(url); } catch (_) {}
+
+        resolve(endedOk);
+      };
+
+      // If interrupted, resolve quickly
+      const checkInterrupt = () => {
+        if (token !== speakToken) {
+          try { ttsAudio.pause(); } catch (_) {}
+          try { URL.revokeObjectURL(url); } catch (_) {}
+          resolve(true);
+          return;
+        }
+        requestAnimationFrame(checkInterrupt);
+      };
+
+      ttsAudio.addEventListener("ended", onEnd, { once: true });
+      ttsAudio.addEventListener("error", onError, { once: true });
+      requestAnimationFrame(checkInterrupt);
+    });
+
+    return true;
+  } catch (_) {
+    // restore music if GPT failed (don’t leave it ducked)
+    if (token === speakToken) {
+      if (carolOn && carol) fadeTo(CAROL.volume, 250);
+    }
+    return false;
+  } finally {
+    ttsAbort = null;
+  }
+}
+
+function speakViaBrowser(text, token) {
+  if (!("speechSynthesis" in window)) return;
+
+  try {
+    // Cancel any existing speech
     window.speechSynthesis.cancel();
 
-    if (carolOn && carol) fadeTo(0.12, 180);
-
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.95;
-    u.pitch = 1.0;
-    u.volume = 1.0;
+    u.rate = BROWSER_VOICE.rate;
+    u.pitch = BROWSER_VOICE.pitch;
+    u.volume = BROWSER_VOICE.volume;
+
     u.onend = () => {
       if (token !== speakToken) return;
       if (carolOn && carol) fadeTo(CAROL.volume, 300);
     };
+
+    u.onerror = () => {
+      if (token !== speakToken) return;
+      if (carolOn && carol) fadeTo(CAROL.volume, 250);
+    };
+
     window.speechSynthesis.speak(u);
-  } catch (_) {}
+  } catch (_) {
+    if (token === speakToken) {
+      if (carolOn && carol) fadeTo(CAROL.volume, 250);
+    }
+  }
 }
 
 /* ---------------------------
@@ -337,7 +553,10 @@ function speak(text) {
 --------------------------- */
 function pickTextColor() {
   if (TEXT_COLOR_MODE === "single") return TEXT_SINGLE_COLOR;
-  if (TEXT_COLOR_MODE === "palette") return TEXT_COLOR_PALETTE[(Math.random() * TEXT_COLOR_PALETTE.length) | 0];
+  if (TEXT_COLOR_MODE === "palette")
+    return TEXT_COLOR_PALETTE[
+      (Math.random() * TEXT_COLOR_PALETTE.length) | 0
+    ];
   return `hsl(${Math.random() * 360}, 90%, 78%)`;
 }
 
@@ -349,7 +568,7 @@ function spawnTreeText(text) {
       word,
       u: FLOW.startU + i * FLOW.spacing,
       alpha: 0.0,
-      mult: 1 + Math.random() * 0.30,
+      mult: 1 + Math.random() * 0.3,
       color: pickTextColor(),
     });
   });
@@ -366,25 +585,36 @@ function getTextPosition(u, cfg, now) {
   switch (TEXT_SHAPE) {
     case "tree": {
       const y = topY + u * h;
-      const r = (u ** 1.12) * maxRadius;
+      const r = u ** 1.12 * maxRadius;
       const a = u * turns * Math.PI + Math.sin(now / 1200) * 0.12;
       return { x: cx + Math.cos(a) * r, y };
     }
     case "circle": {
       const radius = W * TEXT_SHAPE_RADIUS;
       const a = u * Math.PI * 2;
-      return { x: cx + Math.cos(a) * radius, y: H * 0.45 + Math.sin(a) * radius };
+      return {
+        x: cx + Math.cos(a) * radius,
+        y: H * 0.45 + Math.sin(a) * radius,
+      };
     }
     case "heart": {
       const t = u * Math.PI * 2;
       const r = W * TEXT_SHAPE_RADIUS;
       return {
         x: cx + r * 0.85 * Math.pow(Math.sin(t), 3),
-        y: H * 0.42 - r * (0.28 * Math.cos(t) - 0.12 * Math.cos(2 * t) - 0.03 * Math.cos(3 * t))
+        y:
+          H * 0.42 -
+          r *
+            (0.28 * Math.cos(t) -
+              0.12 * Math.cos(2 * t) -
+              0.03 * Math.cos(3 * t)),
       };
     }
     case "wave": {
-      return { x: W * 0.15 + u * W * 0.7, y: H * 0.55 + Math.sin(u * Math.PI * 4 + now / 900) * 24 };
+      return {
+        x: W * 0.15 + u * W * 0.7,
+        y: H * 0.55 + Math.sin(u * Math.PI * 4 + now / 900) * 24,
+      };
     }
     case "pillar": {
       return { x: cx, y: topY + u * h };
@@ -395,8 +625,11 @@ function getTextPosition(u, cfg, now) {
       const inner = outer * 0.45;
       const a = u * Math.PI * 2;
       const k = Math.floor(u * spikes * 2);
-      const r = (k % 2 === 0) ? outer : inner;
-      return { x: cx + Math.cos(a) * r, y: H * 0.45 + Math.sin(a) * r };
+      const r = k % 2 === 0 ? outer : inner;
+      return {
+        x: cx + Math.cos(a) * r,
+        y: H * 0.45 + Math.sin(a) * r,
+      };
     }
     default:
       return { x: cx, y: topY + u * h };
@@ -404,7 +637,9 @@ function getTextPosition(u, cfg, now) {
 }
 
 function hslToHsla(hsl, a) {
-  return String(hsl).replace(/^hsl\(/, "hsla(").replace(/\)\s*$/, `, ${a})`);
+  return String(hsl)
+    .replace(/^hsl\(/, "hsla(")
+    .replace(/\)\s*$/, `, ${a})`);
 }
 
 /* ---------------------------
@@ -421,16 +656,20 @@ function renderTreeText(now, dt, cfg) {
   const alive = [];
 
   for (const t of treeText) {
-    const step = (TEXT_SPEED * (t.mult || 1)) || 0;
+    const step = TEXT_SPEED * (t.mult || 1) || 0;
     t.u -= step * dt;
 
     t.alpha = Math.min(1, t.alpha + 0.014);
     if (t.u < FLOW.endU) continue;
 
-    let a = clamp((0.60 + 0.40 * t.alpha) * brightness, 0, 1);
+    let a = clamp((0.6 + 0.4 * t.alpha) * brightness, 0, 1);
 
     if (t.u < FLOW.fadeStartU) {
-      const fade = clamp((t.u - FLOW.endU) / (FLOW.fadeStartU - FLOW.endU), 0, 1);
+      const fade = clamp(
+        (t.u - FLOW.endU) / (FLOW.fadeStartU - FLOW.endU),
+        0,
+        1
+      );
       a *= fade;
     }
 
@@ -441,8 +680,8 @@ function renderTreeText(now, dt, cfg) {
     const textW = metrics.width;
     const textH = TEXT_FONT_SIZE * 1.18;
 
-    const boxW = (textW + ORNAMENT_PADDING_X * 2);
-    const boxH = (textH + ORNAMENT_PADDING_Y * 2);
+    const boxW = textW + ORNAMENT_PADDING_X * 2;
+    const boxH = textH + ORNAMENT_PADDING_Y * 2;
 
     ctx.save();
     ctx.translate(pos.x, pos.y);
@@ -518,7 +757,8 @@ function nextMember() {
   setNow(member, line);
   spawnTreeText(line);
 
-  speak(`${member.name}. ${line.replace(member.name, "").replace("…", "").replace("—", "").trim()}`);
+  // ✅ voice (GPT preferred; browser fallback)
+  speakTextForMember(member.name, line);
 
   idx++;
   if (idx % order.length === 0) makeOrder();
@@ -528,7 +768,9 @@ function nextMember() {
    Tree visuals (originals)
 --------------------------- */
 const CYAN = { r: 120, g: 215, b: 255 };
-function rgba(c, a) { return `rgba(${c.r},${c.g},${c.b},${a})`; }
+function rgba(c, a) {
+  return `rgba(${c.r},${c.g},${c.b},${a})`;
+}
 
 let t0 = performance.now();
 let particles = [];
@@ -536,18 +778,25 @@ let lights = [];
 
 function initGold() {
   particles = [];
-  const cx = W * 0.5, baseY = H * 0.78, topY = H * 0.18;
+  const cx = W * 0.5,
+    baseY = H * 0.78,
+    topY = H * 0.18;
   const h = baseY - topY;
   const n = Math.floor(900 * clamp((W * H) / 900000, 0.8, 1.6));
   for (let i = 0; i < n; i++) {
     const u = Math.random();
     const y = topY + u * h;
-    const radius = (u ** 1.15) * (W * 0.22);
+    const radius = u ** 1.15 * (W * 0.22);
     const ang = u * 8.0 * Math.PI + Math.random() * 0.25;
     const x = cx + Math.cos(ang) * radius + (Math.random() - 0.5) * 10;
-    const size = 1 + (u * 2.6) + Math.random() * 1.4;
+    const size = 1 + u * 2.6 + Math.random() * 1.4;
     particles.push({
-      baseX: x, baseY: y, u, ang, radius, size,
+      baseX: x,
+      baseY: y,
+      u,
+      ang,
+      radius,
+      size,
       tw: Math.random() * 2 * Math.PI,
       drift: (Math.random() - 0.5) * 0.35,
     });
@@ -556,22 +805,28 @@ function initGold() {
 
 function initLights() {
   lights = [];
-  const cx = W * 0.5, baseY = H * 0.80, topY = H * 0.16;
+  const cx = W * 0.5,
+    baseY = H * 0.8,
+    topY = H * 0.16;
   const h = baseY - topY;
   const bands = 16;
   for (let b = 0; b < bands; b++) {
     const u = (b + 1) / (bands + 1);
     const y = topY + u * h;
-    const radius = (u ** 1.08) * (W * 0.25);
+    const radius = u ** 1.08 * (W * 0.25);
     const count = Math.floor(14 + u * 44);
     for (let i = 0; i < count; i++) {
       const a = (i / count) * 2 * Math.PI + (b % 2 ? 0.15 : 0);
       const x = cx + Math.cos(a) * radius;
       const wobble = (Math.random() - 0.5) * 6;
       lights.push({
-        x, y: y + wobble, a, radius, u,
+        x,
+        y: y + wobble,
+        a,
+        radius,
+        u,
         hue: (i * 18 + b * 14) % 360,
-        tw: Math.random() * 2 * Math.PI
+        tw: Math.random() * 2 * Math.PI,
       });
     }
   }
@@ -579,8 +834,15 @@ function initLights() {
 
 function drawBackground(now) {
   ctx.clearRect(0, 0, W, H);
-  const g = ctx.createRadialGradient(W * 0.5, H * 0.25, 10, W * 0.5, H * 0.4, Math.max(W, H) * 0.75);
-  g.addColorStop(0, `rgba(120,215,255,${0.10 * brightness})`);
+  const g = ctx.createRadialGradient(
+    W * 0.5,
+    H * 0.25,
+    10,
+    W * 0.5,
+    H * 0.4,
+    Math.max(W, H) * 0.75
+  );
+  g.addColorStop(0, `rgba(120,215,255,${0.1 * brightness})`);
   g.addColorStop(0.35, `rgba(247,198,107,${0.06 * brightness})`);
   g.addColorStop(1, `rgba(0,0,0,1)`);
   ctx.fillStyle = g;
@@ -589,8 +851,10 @@ function drawBackground(now) {
   const n = 18;
   for (let i = 0; i < n; i++) {
     const a = now / 2200 + i * 0.77;
-    const x = W * (0.15 + 0.7 * (Math.sin(a * 0.9 + i) * 0.5 + 0.5));
-    const y = H * (0.08 + 0.35 * (Math.cos(a * 0.7 + i * 2.1) * 0.5 + 0.5));
+    const x =
+      W * (0.15 + 0.7 * (Math.sin(a * 0.9 + i) * 0.5 + 0.5));
+    const y =
+      H * (0.08 + 0.35 * (Math.cos(a * 0.7 + i * 2.1) * 0.5 + 0.5));
     const r = 8 + (Math.sin(a + i) * 0.5 + 0.5) * 18;
     ctx.beginPath();
     ctx.fillStyle = `rgba(247,198,107,${0.035 * brightness})`;
@@ -617,7 +881,9 @@ function drawStar(cx, cy, r) {
 }
 
 function renderGold(now, dt) {
-  const cx = W * 0.5, baseY = H * 0.80, topY = H * 0.18;
+  const cx = W * 0.5,
+    baseY = H * 0.8,
+    topY = H * 0.18;
 
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
@@ -635,7 +901,8 @@ function renderGold(now, dt) {
   for (const p of particles) {
     p.tw += dt * (0.0018 + p.u * 0.0015);
     const twk = 0.35 + 0.65 * (Math.sin(p.tw) * 0.5 + 0.5);
-    const drift = Math.sin(now / 1200 + p.ang) * (1.2 + p.u * 2.2) + p.drift * 30;
+    const drift =
+      Math.sin(now / 1200 + p.ang) * (1.2 + p.u * 2.2) + p.drift * 30;
     const x = p.baseX + drift;
     const y = p.baseY + Math.cos(now / 1800 + p.u * 6) * 0.7;
 
@@ -658,12 +925,20 @@ function renderGold(now, dt) {
   ctx.fill();
   ctx.restore();
 
-  renderTreeText(now, dt, { cx, topY: H * 0.18, h: H * 0.62, maxRadius: W * 0.22, turns: 8.0 });
+  renderTreeText(now, dt, {
+    cx,
+    topY: H * 0.18,
+    h: H * 0.62,
+    maxRadius: W * 0.22,
+    turns: 8.0,
+  });
   drawStar(cx, topY - 30, Math.min(W, H) * 0.035);
 }
 
 function renderLights(now, dt) {
-  const cx = W * 0.5, baseY = H * 0.82, topY = H * 0.16;
+  const cx = W * 0.5,
+    baseY = H * 0.82,
+    topY = H * 0.16;
 
   ctx.save();
   ctx.strokeStyle = `rgba(255,255,255,${0.08 * brightness})`;
@@ -680,7 +955,9 @@ function renderLights(now, dt) {
   ctx.globalCompositeOperation = "lighter";
   for (const L of lights) {
     L.tw += dt * 0.0032;
-    const twk = 0.25 + 0.75 * (Math.sin(L.tw + L.u * 6 + now / 900) * 0.5 + 0.5);
+    const twk =
+      0.25 +
+      0.75 * (Math.sin(L.tw + L.u * 6 + now / 900) * 0.5 + 0.5);
     const hue = (L.hue + now / 90) % 360;
     ctx.fillStyle = `hsla(${hue}, 95%, 62%, ${(0.08 + 0.35 * twk) * brightness})`;
     const r = 1.3 + twk * (2.8 + L.u * 2.2);
@@ -697,13 +974,20 @@ function renderLights(now, dt) {
 
   ctx.save();
   ctx.fillStyle = `rgba(130,90,50,${0.85 * brightness})`;
-  const tw = W * 0.03, th = H * 0.09;
+  const tw = W * 0.03,
+    th = H * 0.09;
   ctx.beginPath();
   roundRectPath(cx - tw / 2, baseY, tw, th, 10);
   ctx.fill();
   ctx.restore();
 
-  renderTreeText(now, dt, { cx, topY: H * 0.16, h: H * 0.66, maxRadius: W * 0.25, turns: 6.2 });
+  renderTreeText(now, dt, {
+    cx,
+    topY: H * 0.16,
+    h: H * 0.66,
+    maxRadius: W * 0.25,
+    turns: 6.2,
+  });
   drawStar(cx, topY - 22, Math.min(W, H) * 0.04);
 }
 
@@ -722,8 +1006,12 @@ function setCinematic(_) {
   cinematic = false; // locked off
   syncButtons();
 }
-function resetUiIdleTimer() { /* no-op */ }
-function noteUiActivity() { /* no-op */ }
+function resetUiIdleTimer() {
+  /* no-op */
+}
+function noteUiActivity() {
+  /* no-op */
+}
 
 /* ===============================
    UI
@@ -733,8 +1021,10 @@ function syncButtons() {
     ui.btnPlay.textContent = playing ? "⏸ Pause" : "▶️ Play";
     ui.btnPlay.setAttribute("aria-pressed", String(playing));
   }
-  if (ui.btnShuffle) ui.btnShuffle.textContent = `🔀 Shuffle: ${shuffleOn ? "On" : "Off"}`;
-  if (ui.btnVoice) ui.btnVoice.textContent = `🔊 Voice: ${voiceOn ? "On" : "Off"}`;
+  if (ui.btnShuffle)
+    ui.btnShuffle.textContent = `🔀 Shuffle: ${shuffleOn ? "On" : "Off"}`;
+  if (ui.btnVoice)
+    ui.btnVoice.textContent = `🔊 Voice: ${voiceOn ? "On" : "Off"}`;
 
   if (ui.treeStyle) ui.treeStyle.value = treeMode;
   if (ui.speed) ui.speed.value = speedKey;
@@ -746,11 +1036,15 @@ function syncButtons() {
   if (ui.textShape) ui.textShape.value = String(TEXT_SHAPE);
   if (ui.textContainer) ui.textContainer.value = String(TEXT_CONTAINER);
 
+  // Optional voice controls if present
+  if (ui.voiceEngine) ui.voiceEngine.value = VOICE_ENGINE;
+  if (ui.voiceSelect) ui.voiceSelect.value = GPT_VOICE;
+
   // Cinematic button stays OFF (and doesn’t toggle)
   if (ui.btnCinematic) {
     ui.btnCinematic.textContent = "🎬 Cinematic: Off";
     ui.btnCinematic.setAttribute("aria-pressed", "false");
-    ui.btnCinematic.disabled = true;     // ✅ prevents clicking it
+    ui.btnCinematic.disabled = true;
     ui.btnCinematic.style.opacity = "0.6";
     ui.btnCinematic.style.cursor = "not-allowed";
     ui.btnCinematic.title = "Always On mode: cinematic is disabled";
@@ -767,8 +1061,13 @@ function syncButtons() {
 /* Buttons */
 ui.btnPlay?.addEventListener("click", () => {
   playing = !playing;
-  if (!playing) { try { window.speechSynthesis?.cancel(); } catch (_) {} }
-  else { lastSwitch = performance.now(); }
+
+  if (!playing) {
+    stopVoicePlayback();
+  } else {
+    lastSwitch = performance.now();
+  }
+
   syncButtons();
 });
 
@@ -786,8 +1085,15 @@ ui.btnShuffle?.addEventListener("click", () => {
 
 ui.btnVoice?.addEventListener("click", () => {
   voiceOn = !voiceOn;
-  if (!voiceOn) { try { window.speechSynthesis?.cancel(); } catch (_) {} }
-  else { speak(`${ui.currentName.textContent}. ${ui.currentLine.textContent}`); }
+
+  if (!voiceOn) {
+    stopVoicePlayback();
+  } else {
+    // This click is a user gesture — good time to unlock audio + speak
+    ttsUnlocked = true;
+    speak(`${ui.currentName.textContent}. ${ui.currentLine.textContent}`, { interrupt: true });
+  }
+
   syncButtons();
 });
 
@@ -807,6 +1113,18 @@ ui.btnMusic?.addEventListener("click", () => {
   syncButtons();
 });
 
+/* Optional voice engine selector */
+ui.voiceEngine?.addEventListener("change", () => {
+  VOICE_ENGINE = ui.voiceEngine.value === "browser" ? "browser" : "gpt";
+  syncButtons();
+});
+
+/* Optional GPT voice selector */
+ui.voiceSelect?.addEventListener("change", () => {
+  GPT_VOICE = ui.voiceSelect.value || "alloy";
+  syncButtons();
+});
+
 /* Shift+N to skip to next carol */
 window.addEventListener("keydown", (e) => {
   if (e.shiftKey && (e.key || "").toLowerCase() === "n") {
@@ -818,7 +1136,8 @@ window.addEventListener("keydown", (e) => {
 /* Dropdowns / sliders */
 ui.treeStyle?.addEventListener("change", () => {
   treeMode = ui.treeStyle.value;
-  if (treeMode === "lights") initLights(); else initGold();
+  if (treeMode === "lights") initLights();
+  else initGold();
   syncButtons();
 });
 
@@ -858,15 +1177,12 @@ ui.textContainer?.addEventListener("change", () => {
 });
 
 /* Keyboard shortcuts:
-   - We KEEP Shift+N for songs
-   - We DISABLE cinematic toggles (C / ESC) so it never hides
+   - KEEP Shift+N for songs
+   - DISABLE cinematic toggles (C / ESC)
 */
 window.addEventListener("keydown", (e) => {
   const k = (e.key || "").toLowerCase();
-  if (k === "c" || e.key === "Escape") {
-    // ignore
-    return;
-  }
+  if (k === "c" || e.key === "Escape") return;
 });
 
 /* Canvas click no longer toggles UI (always on) */
